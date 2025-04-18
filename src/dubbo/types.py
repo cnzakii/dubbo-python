@@ -15,14 +15,20 @@
 # limitations under the License.
 import enum
 from dataclasses import dataclass
-from typing import Any, Callable
+from os import PathLike
+from typing import Any, Callable, Union
 
 __all__ = [
+    "FilePath",
+    "StrOrBytes",
     "SerializingFunction",
     "DeserializingFunction",
     "RpcType",
     "RpcTypes",
 ]
+
+FilePath = Union[str, bytes, PathLike[str], PathLike[bytes]]
+StrOrBytes = Union[str, bytes, bytearray]
 
 SerializingFunction = Callable[..., bytes]
 DeserializingFunction = Callable[[bytes], Any]

@@ -13,5 +13,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional
 
-from ._system import *
+from ._base import BaseConfig
+
+
+class ProtocolConfig(BaseConfig):
+    """
+    Configuration for the protocol.
+    """
+
+    _name: str
+    _host: Optional[str]
+    _port: Optional[int]
+
+    def __init__(self, name: str, host: Optional[str] = None, port: Optional[int] = None):
+        """
+        Initialize the protocol configuration
+        :param name: protocol name
+        :type name: str
+        :param host: host address
+        :type host: str
+        :param port: port number
+        :type port: int
+        """
+        self._name = name
+        self._host = host
+        self._port = port

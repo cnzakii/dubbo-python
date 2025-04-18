@@ -13,5 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import abc
 
-from ._system import *
+__all__ = ["BaseConfig"]
+
+
+class BaseConfig:
+    """
+    Abstract base class for all configuration classes.
+    """
+
+    pass

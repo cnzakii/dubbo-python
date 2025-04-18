@@ -19,19 +19,19 @@ requires = ["hatchling", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
 
 [project]
-name="apache-dubbo"
+name = "apache-dubbo"
 requires-python = ">=3.9"
 authors = [
-    {name = "Apache Dubbo Community", email = "dev@dubbo.apache.org"}
+    { name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }
 ]
 maintainers = [
-    {name = "Apache Dubbo Community", email = "dev@dubbo.apache.org"}
+    { name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }
 ]
 description = "Python Implementation For Apache Dubbo."
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E.*"]
-keywords=["dubbo", "rpc","grpc", "dubbo-python", "http2", "network"]
-classifiers=[
+keywords = ["dubbo", "rpc", "grpc", "dubbo-python", "http2", "network"]
+classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -66,10 +66,36 @@ Documentation = "https://cn.dubbo.apache.org/en/overview/mannual/python-sdk/"
 Repository = "https://github.com/apache/dubbo-python"
 Issues = "https://github.com/apache/dubbo/issues"
 
+# like `pip install apache-dubbo[all]`
 [project.optional-dependencies]
 zookeeper = [
     "kazoo>=2.10.0",
 ]
+
+config = [
+    "pyyaml>=6.0.2",
+    "tomli>=2.2.1; python_version<'3.11'",
+]
+
+all = [
+    "zookeeper",
+    "config",
+]
+
+# like `pip install --dependency-groups=dev`
+[dependency-groups]
+dev = [
+    # Packaging
+    "hatch>=1.14.0",
+    " hatch-fancy-pypi-readme>=24.1.0",
+    # Formatting & Linting
+    "ruff>=0.11.6",
+    "mypy>=1.14.1",
+    # Testing
+    "pytest>=8.3.4",
+    "coverage[toml]>=7.6.10",
+]
+
 
 ### Hatch settings ###
 [tool.hatch.version]
@@ -117,7 +143,7 @@ select = [
     "ASYNC", # flake8-async
     "ISC", # Checks for implicit literal string concatenation (auto-fixable)
     "LOG", # Checking the use of logging objects
-    "G",  # Check for logging format issues (auto-fixable)
+    "G", # Check for logging format issues (auto-fixable)
 ]
 ignore = [
     "ISC001" # may casue conflict with ruff
@@ -128,11 +154,11 @@ ignore = [
 combine-as-imports = true
 
 section-order = [
-  "future",
-  "standard-library",
-  "third-party",
-  "first-party",
-  "local-folder"
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder"
 ]
 
 ### Coverage settings ###

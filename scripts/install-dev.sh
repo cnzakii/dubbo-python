@@ -16,12 +16,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install dependencies for development
-REQUIREMENTS_DEV="requirements-dev.txt"
-
 # Upgrade pip
 pip install -U pip
 
+# Install dev dependencies
+pip install --group dev
+
 # Install dependencies
-pip install -r $REQUIREMENTS_DEV
+pip install -e .[all]
 

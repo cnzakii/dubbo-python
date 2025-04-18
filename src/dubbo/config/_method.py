@@ -14,4 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._system import *
+
+class MethodConfig:
+    pass
