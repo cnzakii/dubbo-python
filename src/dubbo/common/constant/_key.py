@@ -13,3 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+PROTOCOL_KEY = "protocol"
+USERNAME_KEY = "username"
+PASSWORD_KEY = "password"
+HOST_KEY = "host"
+PORT_KEY = "port"
+PATH_KEY = "path"
+
+TIMEOUT_KEY = "timeout"

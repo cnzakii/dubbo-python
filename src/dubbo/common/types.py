@@ -13,3 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from ipaddress import IPv4Address, IPv6Address
+from typing import Union
+
+__all__ = ["StrOrBytes", "BytesLike", "IPAddressType"]
+
+StrOrBytes = Union[str, bytes, bytearray, memoryview]
+BytesLike = Union[bytes, bytearray, memoryview]
+
+IPAddressType = Union[str, IPv4Address, IPv6Address]

@@ -13,3 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from ._base import AsyncHttp2Connection, AsyncHttp2Stream
+from .headers import Http2Headers
+from .registries import Http2ErrorCodes, Http2SettingCodes
+
+# isort: split
+from ._anyio import AnyIOHttp2Client, AnyIOHttp2Connection, AnyIOHttp2Stream, AnyIOHttp2Transport

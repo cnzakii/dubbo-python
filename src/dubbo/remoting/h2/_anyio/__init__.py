@@ -13,3 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from ._connection import AnyIOHttp2Connection
+from ._stream import AnyIOHttp2Stream
+from ._transport import AnyIOHttp2Client, AnyIOHttp2Transport

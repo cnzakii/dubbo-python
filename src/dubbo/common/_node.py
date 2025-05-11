@@ -13,3 +13,39 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import abc
+
+from ._url import URL
+
+__all__ = ["Node"]
+
+
+class Node(abc.ABC):
+    @abc.abstractmethod
+    def get_url(self) -> URL:
+        """
+        Get the URL of the node.
+
+        :return: The URL of the node.
+        :rtype: URL
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_available(self) -> bool:
+        """
+        Check if the node is available.
+
+        :return: True if the node is available, False otherwise.
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def destroy(self) -> None:
+        """
+        Destroy the node.
+
+        """
+        raise NotImplementedError()
