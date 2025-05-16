@@ -54,4 +54,4 @@ jobs:
         run: "uv sync --all-extras --group dev"
 
       - name: Run tests
-        run: "pytest"
+        run: "uv run pytest"
