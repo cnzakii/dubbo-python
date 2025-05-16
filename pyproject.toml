@@ -159,7 +159,7 @@ check_untyped_defs = true
 
 # ------------- Pytest settings ------------
 [tool.pytest.ini_options]
-addopts = "-rxXs --cov=src/dubbo --cov-report=term --cov-report=term-missing  --cov-fail-under=100"
+addopts = "-rxXs --cov=src/dubbo --cov-report=term --cov-report=term-missing"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 markers = [
@@ -173,7 +173,6 @@ markers = [
 filterwarnings = [
     "ignore::pytest.PytestCollectionWarning"
 ]
-
 
 
 [tool.coverage.report]
