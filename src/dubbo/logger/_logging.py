@@ -17,7 +17,7 @@ import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from typing import Optional
 
-from dubbo.common import constant
+from dubbo.common import constants
 
 from ._base import ConsoleOptions, DubboLogger, FileOptions, LoggerLevel
 
@@ -122,7 +122,7 @@ class LoggingLogger(DubboLogger):
         Initializes the logging instance by merging the default and custom options, and sets up the console
         and file handlers accordingly.
         """
-        self._instance = logging.getLogger(constant.DUBBO)
+        self._instance = logging.getLogger(constants.DUBBO)
 
         # Ensure the logger processes all messages needed by any handler
         min_level = min(self._console_options.level, self._file_options.level)
@@ -204,11 +204,11 @@ class LoggingLogger(DubboLogger):
                 when=self._file_options.rotation,
                 interval=1,
                 backupCount=int(self._file_options.retention or 0),
-                encoding=constant.UTF_8,
+                encoding=constants.UTF_8,
             )  # type: ignore
         else:
             # No rotation
-            handler = logging.FileHandler(filename=self._file_options.path, encoding=constant.UTF_8)  # type: ignore
+            handler = logging.FileHandler(filename=self._file_options.path, encoding=constants.UTF_8)  # type: ignore
 
         handler.setLevel(self._file_options.level.value)
         formatter = logging.Formatter(

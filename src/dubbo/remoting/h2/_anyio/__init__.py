@@ -17,3 +17,10 @@
 from ._connection import AnyIOHttp2Connection
 from ._stream import AnyIOHttp2Stream
 from ._transport import AnyIOHttp2Client, AnyIOHttp2Transport
+
+__all__ = [
+    "AnyIOHttp2Client",
+    "AnyIOHttp2Connection",
+    "AnyIOHttp2Stream",
+    "AnyIOHttp2Transport",
+]

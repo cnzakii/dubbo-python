@@ -28,11 +28,11 @@ from dubbo.common.types import BytesLike
 from dubbo.common.utils import common as common_utils
 from dubbo.remoting.backend import AsyncNetworkStream
 from dubbo.remoting.backend.exceptions import ReceiveError, ReceiveTimeout, SendError, SendTimeout
-from dubbo.remoting.h2 import AsyncHttp2Connection, Http2ErrorCodes, Http2SettingCodes
-from dubbo.remoting.h2.exceptions import H2ConnectionError, H2ProtocolError
+from dubbo.remoting.h2 import AsyncHttp2Connection, Http2ErrorCode, Http2SettingCode
+from dubbo.remoting.h2.exceptions import H2ConnectionError, H2ConnectionTerminatedError, H2ProtocolError
 
 from ._stream import AnyIOHttp2Stream
-from ._tracker import DummySendTracker, SendTracker
+from ._tracker import SendTracker, dummy_tracker
 
 __all__ = ["AnyIOHttp2Connection"]
 
@@ -97,13 +97,13 @@ class PingAckManager:
                 # Await the callback if it is async
                 await callback()
             except Exception as e:
-                _LOGGER.error(f"Error while executing callback for ping ack: {e}")
+                _LOGGER.error("Error while executing callback for ping ack: {}", e)
             finally:
                 # If there are still callbacks left, reassign them to the payload
                 if callbacks:
                     self._ping_ack_callbacks[payload] = callbacks
         else:
-            _LOGGER.debug(f"No callbacks registered for payload: {payload.hex()}")
+            _LOGGER.debug("No callbacks registered for payload: {}", payload.hex())
 
 
 async def _noop_stream_handler(stream: AnyIOHttp2Stream) -> None:
@@ -123,24 +123,24 @@ class StreamManager:
     events to individual streams. It also supports pruning stale streams.
     """
 
-    __slots__ = ("_conn", "_streams", "_count", "_stream_handler", "_on_change")
+    __slots__ = ("_conn", "_streams", "_count", "_stream_handler", "_count_monitor")
 
     _conn: "AnyIOHttp2Connection"
     _streams: dict[int, AnyIOHttp2Stream]
     _stream_handler: Callable[[AnyIOHttp2Stream], Awaitable[None]]
-    _on_change: Callable[[int], None]
+    _count_monitor: Callable[[int], None]
 
     def __init__(
         self,
         conn: "AnyIOHttp2Connection",
         stream_handler: Optional[Callable[[AnyIOHttp2Stream], Awaitable[None]]] = None,
-        on_change: Optional[Callable[[int], None]] = None,
+        count_monitor: Optional[Callable[[int], None]] = None,
     ):
         self._conn = conn
         self._streams = {}
         self._count = 0
         self._stream_handler = stream_handler or _noop_stream_handler
-        self._on_change = on_change or (lambda stream_id: None)
+        self._count_monitor = count_monitor or (lambda _: None)
 
     @property
     def count(self) -> int:
@@ -156,7 +156,7 @@ class StreamManager:
         :param count: The new count of active streams.
         """
         self._count = count
-        self._on_change(self._count)
+        self._count_monitor(count)
 
     def register(self, stream: AnyIOHttp2Stream) -> None:
         """
@@ -169,7 +169,7 @@ class StreamManager:
             raise H2ConnectionError("Cannot register stream: uninitialized stream_id.")
         self._streams[stream.stream_id] = stream
         self.count += 1
-        _LOGGER.debug(f"[HTTP/2] Stream {stream.stream_id} registered.")
+        _LOGGER.debug("[HTTP/2] Stream {} registered.", stream.stream_id)
         # Start the stream handler in the task group
         self._conn.task_group.start_soon(self._stream_handler, stream)
 
@@ -183,9 +183,9 @@ class StreamManager:
         try:
             del self._streams[stream.stream_id]
             self.count -= 1
-            _LOGGER.debug(f"Stream {stream.stream_id} unregistered.")
+            _LOGGER.debug("Stream {} unregistered.", stream.stream_id)
         except KeyError:
-            raise H2ConnectionError(f"Stream {stream.stream_id} is not registered.")
+            raise H2ConnectionError("Stream {} is not registered.", stream.stream_id)
 
     def get_stream(self, stream_id: int) -> Optional[AnyIOHttp2Stream]:
         """
@@ -208,7 +208,7 @@ class StreamManager:
                 del self._streams[stream_id]
                 removed.append(stream_id)
         if removed:
-            _LOGGER.debug(f"[HTTP/2]Removed streams with IDs: {removed}")
+            _LOGGER.debug("[HTTP/2]Removed streams with IDs: {}", removed)
             self.count -= len(removed)
 
     async def dispatch_event(self, event: h2_events.Event) -> None:
@@ -222,33 +222,28 @@ class StreamManager:
             for stream in self._streams.values():
                 await stream.handle_event(event)
             _LOGGER.debug("[HTTP/2] Dispatched connection-level WindowUpdated to all streams.")
-            return
-
-        if isinstance(event, h2_events.ConnectionTerminated):
+        elif isinstance(event, h2_events.ConnectionTerminated):
             # Handle connection termination
             last_stream_id = event.last_stream_id or 0
             for stream in self._streams.values():
                 if stream.stream_id > last_stream_id:
                     await stream.handle_event(event)
-                _LOGGER.debug(f"[HTTP/2] Dispatched ConnectionTerminated to stream {stream.stream_id}.")
+            _LOGGER.debug(
+                "[HTTP/2] Dispatched connection-level ConnectionTerminated to streams.(ID > {})", last_stream_id
+            )
             self.remove_stream(last_stream_id)
-
-        # Filter other connection-level events
-        stream_id = getattr(event, "stream_id", 0)
-        if stream_id <= 0:
-            return
-
-        # Handle stream-level events
-        if isinstance(event, h2_events.RequestReceived):
-            # Create a new stream for the request
-            assert event.stream_id is not None
-            stream = self._conn.create_stream(event.stream_id)
-            self.register(stream)
-        stream = self.get_stream(stream_id)  # type: ignore[assignment]
-        if stream:
-            await stream.handle_event(event)
-        else:
-            _LOGGER.warning(f"[HTTP/2] Stream {stream_id} not found for event: {event!r}")
+        elif getattr(event, "stream_id", 0) > 0:
+            # Handle stream-level events
+            stream_id: int = event.stream_id  # type: ignore[attr-defined]
+            if isinstance(event, h2_events.RequestReceived):
+                # Create a new stream for the request
+                stream = self._conn.create_stream(stream_id)
+                self.register(stream)
+            stream = self.get_stream(stream_id)  # type: ignore[assignment]
+            if stream:
+                await stream.handle_event(event)
+            else:
+                _LOGGER.warning("[HTTP/2] Stream {} not found for event: {}", stream_id, event)
 
 
 class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
@@ -307,13 +302,6 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
             self._tg.cancel_scope.cancel()
 
     @property
-    def net_stream(self) -> AsyncNetworkStream:
-        """
-        :returns: The underlying network stream.
-        """
-        return self._net_stream
-
-    @property
     def h2_core(self) -> H2Connection:
         """
         :returns: The internal h2 connection core.
@@ -333,6 +321,13 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
         :returns: The task group managing the connection.
         """
         return self._tg
+
+    @property
+    def connected(self) -> bool:
+        """
+        :returns: True if the connection is active, False otherwise.
+        """
+        return not self._closed_event.is_set()
 
     def create_stream(self, stream_id: int = -1) -> AnyIOHttp2Stream:
         if self._conn_exc:
@@ -354,8 +349,9 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
                         await self._net_stream.send(data_to_send)
                     # notify the tracker that the data has been sent
                     tracker.complete()
-        except (SendTimeout, SendError) as e:
-            self._conn_exc = H2ConnectionError("Send error occurred", e)
+        except (SendTimeout, SendError, anyio.get_cancelled_exc_class()) as e:
+            if not self._conn_exc:
+                self._conn_exc = H2ConnectionError("Send error occurred", e)
             self._closed_event.set()
 
     async def _initialize(self) -> None:
@@ -364,7 +360,7 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
         if data_to_send:
             await self._net_stream.send(data_to_send)
 
-    async def update_settings(self, settings: dict[Union[Http2SettingCodes, int], int]) -> None:
+    async def update_settings(self, settings: dict[Union[Http2SettingCode, int], int]) -> None:
         tracker = SendTracker(lambda: self._h2_core.update_settings(settings))
         await self.send(tracker)
         await tracker.result()
@@ -382,14 +378,14 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
 
     async def aclose(
         self,
-        error_code: Union[Http2ErrorCodes, int] = Http2ErrorCodes.NO_ERROR,
+        error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR,
         last_stream_id: Optional[int] = None,
         additional_data: Optional[BytesLike] = None,
     ) -> None:
         """
         Close the HTTP/2 connection with an optional error code and additional data.
         :param error_code: Error code to send with the connection close.
-        :type error_code: Http2ErrorCodes or int
+        :type error_code: Http2ErrorCode or int
         :param last_stream_id: ID of the last stream to close.
         :type last_stream_id: Optional[int]
         :param additional_data: Optional additional data to send with the close.
@@ -409,11 +405,16 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
         )
         await self.send(tracker)
         await tracker.result()
-        self._conn_exc = H2ConnectionError("Connection terminated")
-        # notify streams to close
+        self._conn_exc = H2ConnectionTerminatedError(
+            error_code=error_code,
+            last_stream_id=last_stream_id or 0,
+            additional_data=additional_data,
+            remote_termination=False,  # Local termination
+        )
+        # build a ConnectionTerminated event to notify the relevant streams
         event = h2_events.ConnectionTerminated()
         event.error_code = error_code
-        event.last_stream_id = last_stream_id
+        event.last_stream_id = last_stream_id or 0
         event.additional_data = additional_data
         await self.handle_events([event], False)
 
@@ -426,8 +427,13 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
         :param tracker: A send tracker containing send logic.
         :raises H2ConnectionError: If the connection is closed or an error occurs.
         """
-        if self._conn_exc:
-            raise self._conn_exc
+        exc = self._conn_exc
+        if exc and not (isinstance(exc, H2ConnectionTerminatedError) and exc.remote_termination):
+            # Only suppress the exception if the connection was gracefully closed
+            # by the remote peer using a GOAWAY frame. In all other cases—such as
+            # local termination, protocol errors, or unexpected disconnects—re-raise
+            # the stored connection exception.
+            raise exc
 
         sender, _ = self._send_buffer
         await sender.send(tracker)
@@ -442,18 +448,20 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
                 data = await self._net_stream.receive()
                 if data:
                     events = self._h2_core.receive_data(data)
-                    # handle the events in a separate task
-                    self._tg.start_soon(self.handle_events, events, True)
-        except (ReceiveError, ReceiveTimeout) as e:
-            self._conn_exc = H2ConnectionError("Receive error occurred", e)
+                    await self.handle_events(events, True)
+        except (ReceiveError, ReceiveTimeout, anyio.get_cancelled_exc_class()) as e:
+            if not self._conn_exc:
+                self._conn_exc = H2ConnectionError("Receive error occurred", e)
             self._closed_event.set()
 
-    async def handle_events(self, events: list[h2_events.Event], need_flush: bool = True) -> None:
+    async def handle_events(self, events: list[h2_events.Event], need_flush: bool) -> None:
         """
         Dispatch incoming HTTP/2 events to appropriate handlers.
 
         :param events: A list of parsed H2 events.
+        :type events: list[h2_events.Event]
         :param need_flush: Whether to flush the send buffer after handling events.
+        :type need_flush: bool
         """
         for event in events:
             # Handle the connection-level event
@@ -462,17 +470,20 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
                 await self._ping_ack_manager.ack_ping(event.ping_data or b"")
                 return
 
-            if isinstance(event, h2_events.ConnectionTerminated):
-                self._conn_exc = H2ConnectionError("Connection terminated")
+            if not self._conn_exc and isinstance(event, h2_events.ConnectionTerminated):
+                self._conn_exc = H2ConnectionTerminatedError(
+                    error_code=event.error_code,  # type: ignore[arg-type]
+                    last_stream_id=event.last_stream_id,  # type: ignore[arg-type]
+                    additional_data=event.additional_data,
+                    remote_termination=True,  # Remote termination
+                )
 
             # dispatch the event to the stream manager
             await self.stream_manager.dispatch_event(event)
 
-        # Finally, send a dummy tracker to send the outgoing data of `h2_core`.
-        if need_flush:
-            traker = DummySendTracker()
-            await self.send(traker)
-            await traker.exception()
+        # Send a dummy tracker to send the outgoing data of `h2_core`.
+        if need_flush and not self._conn_exc:
+            self._tg.start_soon(self.send, dummy_tracker)
 
     def _streams_monitor(self, active_streams: int) -> None:
         """
@@ -492,5 +503,4 @@ class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):
         # Conditions for unblocking
         # 1. An abnormal network connection has occurred.
         # 2. Sent or received a GOAWAY frame, and all streams have been unregistered.
-        if not self._closed_event.is_set():
-            await self._closed_event.wait()
+        await self._closed_event.wait()

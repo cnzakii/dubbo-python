@@ -18,7 +18,7 @@ import abc
 
 from ._url import URL
 
-__all__ = ["Node"]
+__all__ = ["Node", "AsyncNode"]
 
 
 class Node(abc.ABC):
@@ -47,5 +47,34 @@ class Node(abc.ABC):
         """
         Destroy the node.
 
+        """
+        raise NotImplementedError()
+
+
+class AsyncNode(abc.ABC):
+    @abc.abstractmethod
+    def get_url(self) -> URL:
+        """
+        Get the URL of the node.
+
+        :return: The URL of the node.
+        :rtype: URL
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_available(self) -> bool:
+        """
+        Check if the node is available.
+
+        :return: True if the node is available, False otherwise.
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def destroy(self) -> None:
+        """
+        Asynchronously destroy the node.
         """
         raise NotImplementedError()

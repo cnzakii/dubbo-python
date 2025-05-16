@@ -14,14 +14,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
-from typing import Awaitable, Callable, Optional, Union
+from collections.abc import Awaitable, Collection
+from typing import Callable, Optional, Union
+
+from hpack import HeaderTuple
 
 from dubbo.common.types import BytesLike
+from dubbo.common.utils import common as common_utils
 
-from .headers import Http2Headers
-from .registries import Http2ErrorCodes, Http2SettingCodes
+from .registries import Http2ErrorCode, Http2SettingCode
 
-__all__ = ["AsyncHttp2Stream", "AsyncHttp2Connection"]
+__all__ = ["AsyncHttp2Stream", "AsyncHttp2Connection", "Headers", "parse_headers"]
+
+
+Headers = Collection[tuple[str, str]]
+
+
+def parse_headers(raw_headers: Optional[list[HeaderTuple]]) -> Headers:
+    """
+    Convert a list of HTTP/2 HeaderTuple (bytes, bytes) into a list of (str, str) tuples.
+
+    :param raw_headers: Optional list of header tuples in (bytes, bytes) form.
+    :return: List of headers as (str, str) tuples.
+    """
+    if not raw_headers:
+        return []
+    return [(common_utils.to_str(k), common_utils.to_str(v)) for k, v in raw_headers]
 
 
 class AsyncHttp2Stream(abc.ABC):
@@ -42,8 +60,28 @@ class AsyncHttp2Stream(abc.ABC):
         """
         raise NotImplementedError()
 
+    @property
     @abc.abstractmethod
-    async def send_headers(self, headers: Http2Headers, end_stream: bool = False) -> None:
+    def local_closed(self) -> bool:
+        """
+        Check if the stream is closed from the local side.
+
+        A stream is considered closed if it has been reset or closed by the local peer.
+        """
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def remote_closed(self) -> bool:
+        """
+        Check if the stream is closed from the remote side.
+
+        A stream is considered closed if it has been reset or closed by the remote peer.
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def send_headers(self, headers: Headers, end_stream: bool = False) -> None:
         """
         Send a HEADERS frame or TRAILERS frame on this stream.
 
@@ -85,7 +123,7 @@ class AsyncHttp2Stream(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def reset(self, error_code: Union[Http2ErrorCodes, int] = Http2ErrorCodes.NO_ERROR) -> None:
+    async def reset(self, error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR) -> None:
         """
         Immediately abort the stream with an RST_STREAM frame.
 
@@ -99,14 +137,13 @@ class AsyncHttp2Stream(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def receive_headers(self, timeout: Optional[float] = None) -> Optional[Http2Headers]:
+    async def receive_headers(self) -> Headers:
         """
         Await the reception of the initial headers for this stream.
 
         Blocks until headers are available or timeout occurs.
 
-        :param timeout: Optional timeout in seconds.
-        :returns: The received headers. If timeout and no headers are received, returns None.
+        :returns: The received headers.
         :raises H2StreamInactiveError: If the stream is inactive.
         :raises H2StreamClosedError: If the stream is closed before trailers arrive.
         :raises H2StreamResetError: If the stream was reset before trailers arrived.
@@ -114,14 +151,13 @@ class AsyncHttp2Stream(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def receive_trailers(self, timeout: Optional[float] = None) -> Optional[Http2Headers]:
+    async def receive_trailers(self) -> Headers:
         """
         Await the reception of trailing headers for this stream.
 
         Blocks until trailers are available or timeout occurs.
 
-        :param timeout: Optional timeout in seconds.
-        :returns: The received trailers. If timeout and no trailers are received, returns None.
+        :returns: The received trailers.
         :raises H2StreamInactiveError: If the stream is inactive.
         :raises H2StreamClosedError: If the stream is closed before trailers arrive.
         :raises H2StreamResetError: If the stream was reset before trailers arrived.
@@ -129,15 +165,15 @@ class AsyncHttp2Stream(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def receive_data(self, max_bytes: int = -1, timeout: Optional[float] = None) -> bytes:
+    async def receive_data(self, max_bytes: int = -1, strict: bool = False) -> bytes:
         """
         Receive a chunk of DATA from the stream, respecting optional limits.
 
         May return less than `max_bytes` depending on available data and flow control.
-        An empty bytes object may indicate stream closure.
+        In strict mode, will raise if exact byte count cannot be fulfilled due to stream closure.
 
         :param max_bytes: Maximum number of bytes to receive (-1 for unlimited).
-        :param timeout: Optional timeout in seconds to wait for data.
+        :param strict: Whether to enforce exactly max_bytes.
         :returns: The received data as bytes.
         :raises H2StreamInactiveError: If the stream is inactive.
         :raises H2StreamClosedError: If the stream is closed before trailers arrive.
@@ -168,7 +204,7 @@ class AsyncHttp2Connection(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def update_settings(self, settings: dict[Union[Http2SettingCodes, int], int]) -> None:
+    async def update_settings(self, settings: dict[Union[Http2SettingCode, int], int]) -> None:
         """
         Send a SETTINGS frame to update configuration on the remote peer.
 
@@ -196,7 +232,7 @@ class AsyncHttp2Connection(abc.ABC):
     @abc.abstractmethod
     async def aclose(
         self,
-        error_code: Union[Http2ErrorCodes, int] = Http2ErrorCodes.NO_ERROR,
+        error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR,
         last_stream_id: Optional[int] = None,
         additional_data: Optional[BytesLike] = None,
     ) -> None:

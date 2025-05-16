@@ -17,7 +17,7 @@ from typing import Callable, Generic, Optional, TypeVar
 
 import anyio
 
-__all__ = ["SendTracker", "DummySendTracker"]
+__all__ = ["SendTracker", "dummy_tracker"]
 
 T = TypeVar("T")
 
@@ -33,10 +33,15 @@ class SendTracker(Generic[T]):
     Example usage:
 
         tracker = SendTracker(lambda: h2_conn.send_headers(...), no_wait=False)
+
+        # In a specific coroutine:
+        ## begin:
         tracker.trigger()
         data = h2_conn.data_to_send()
         await transport.send(data)
         tracker.complete(exc=None)  # or tracker.complete(exc=Exception("Error")) if an error occurred
+        ## end
+
         await tracker.result()  # or await tracker.exception() if you do not want an exception to be raised
     """
 
@@ -80,33 +85,23 @@ class SendTracker(Generic[T]):
         if not self._event.is_set():
             self._event.set()
 
-    async def result(self, timeout: Optional[float] = None) -> Optional[T]:
+    async def result(self) -> Optional[T]:
         """
         Wait for the tracker to complete and return the result.
         Raises the stored exception if one was set.
         """
-        if not self._event.is_set():
-            with anyio.fail_after(timeout):
-                await self._event.wait()
+        await self._event.wait()
         if self._exc:
             raise self._exc
         return self._result
 
-    async def exception(self, timeout: Optional[float] = None) -> Optional[Exception]:
+    async def exception(self) -> Optional[Exception]:
         """
         Wait for the tracker to complete and return the exception, if any.
         """
-        if not self._event.is_set():
-            with anyio.fail_after(timeout):
-                await self._event.wait()
+        await self._event.wait()
         return self._exc
 
 
-class DummySendTracker(SendTracker):
-    """
-    A dummy send tracker that does not perform any actual sending or waiting.
-    It is used for testing purposes or when no real sending is needed.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(lambda: None, no_wait=True)
+# A specialized SendTracker that doesn't produce any data.
+dummy_tracker = SendTracker(lambda: None, no_wait=True)

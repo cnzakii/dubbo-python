@@ -13,22 +13,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Awaitable, Callable, Optional, Union
+import ssl
+from collections.abc import Awaitable, Iterable
+from typing import Callable, Optional, Union
 
 import anyio
 from anyio.abc import SocketStream
 from anyio.streams.stapled import MultiListener
 from anyio.streams.tls import TLSStream
 
-from ._base import DEFAULT_MAX_BYTES, AsyncNetworkBackend, AsyncNetworkStream, AsyncServer
+from dubbo.common.types import IPAddressType
+
+from ._base import DEFAULT_MAX_BYTES, SOCKET_OPTION, AsyncNetworkBackend, AsyncNetworkStream, AsyncServer
 from .exceptions import (
     ConnectError,
-    ConnectTimeout,
+    ExceptionMapping,
     ReceiveError,
-    ReceiveTimeout,
     SendError,
-    SendTimeout,
-    map_exc,
+    map_exceptions,
 )
 
 
@@ -48,35 +50,25 @@ class AnyIOStream(AsyncNetworkStream):
         await self._instance.aclose()
 
     def __init__(self, stream: Union[SocketStream, TLSStream]) -> None:
-        """
-        Initialize the AnyioNetworkStream instance.
-
-        :param stream: The Anyio stream to wrap.
-        :type stream: Any
-        """
         self._instance = stream
 
-    async def send(self, data: bytes, timeout: Optional[float] = None) -> None:
-        exc_map = {
-            TimeoutError: SendTimeout,
+    async def send(self, data: bytes) -> None:
+        exc_map: ExceptionMapping = {
             anyio.BrokenResourceError: SendError,
             anyio.ClosedResourceError: SendError,
         }
-        with map_exc(exc_map):
-            with anyio.fail_after(timeout):
-                await self._instance.send(data)
+        with map_exceptions(exc_map):
+            await self._instance.send(data)
 
-    async def receive(self, max_bytes: int = DEFAULT_MAX_BYTES, timeout: Optional[float] = None) -> bytes:
-        exc_map = {
-            TimeoutError: ReceiveTimeout,
+    async def receive(self, max_bytes: int = DEFAULT_MAX_BYTES) -> bytes:
+        exc_map: ExceptionMapping = {
             anyio.BrokenResourceError: ReceiveError,
             anyio.ClosedResourceError: ReceiveError,
             anyio.EndOfStream: ReceiveError,
         }
 
-        with map_exc(exc_map):
-            with anyio.fail_after(timeout):
-                return await self._instance.receive(max_bytes=max_bytes)
+        with map_exceptions(exc_map):
+            return await self._instance.receive(max_bytes=max_bytes)
 
     async def aclose(self) -> None:
         """
@@ -90,10 +82,11 @@ class AnyIOTCPServer(AsyncServer):
     An implementation of AsyncServer using Anyio.
     """
 
-    __slots__ = ("_listener", "_handler")
+    __slots__ = ("_listener", "_ssl_context", "_handler")
 
     _listener: MultiListener[SocketStream]
-    _handler: Callable[[AsyncNetworkStream], Awaitable[None]]
+    _ssl_context: Optional[ssl.SSLContext]
+    _handler: Optional[Callable[[AsyncNetworkStream], Awaitable[None]]]
 
     def __aenter__(self):
         return self
@@ -101,14 +94,10 @@ class AnyIOTCPServer(AsyncServer):
     def __aexit__(self, exc_type, exc_val, exc_tb):
         return self.aclose()
 
-    def __init__(self, listener: MultiListener[SocketStream]) -> None:
-        """
-        Initialize the AnyioServer instance.
-
-        :param listener: The Anyio server to wrap.
-        :type listener: MultiListener[SocketStream]
-        """
+    def __init__(self, listener: MultiListener[SocketStream], ssl_context: Optional[ssl.SSLContext] = None) -> None:
         self._listener = listener
+        self._ssl_context = ssl_context
+        self._handler = None
 
     async def _handler_wrapper(self, stream) -> None:
         """
@@ -117,8 +106,20 @@ class AnyIOTCPServer(AsyncServer):
         :param stream: The stream to pass to the handler.
         :type stream: SocketStream
         """
-        # Call the user-defined handler with the wrapped stream
-        await self._handler(AnyIOStream(stream))
+        try:
+            if self._ssl_context:
+                # wrap the stream in a TLSStream if ssl_context is provided
+                stream = await TLSStream.wrap(
+                    stream,
+                    ssl_context=self._ssl_context,
+                    server_side=True,
+                )
+            # Call the user-defined handler with the wrapped stream
+            assert self._handler is not None
+            await self._handler(AnyIOStream(stream))
+        except Exception as exc:
+            await stream.aclose()
+            raise exc
 
     async def serve(self, handler: Callable[[AsyncNetworkStream], Awaitable[None]]) -> None:
         self._handler = handler
@@ -137,39 +138,65 @@ class AnyIOBackend(AsyncNetworkBackend):
     """
 
     async def connect_tcp(
-        self, remote_host: str, remote_port: int, timeout: Optional[float] = None, local_host: Optional[str] = None
+        self,
+        remote_host: IPAddressType,
+        remote_port: int,
+        *,
+        local_host: Optional[IPAddressType] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
+        ssl_server_hostname: Optional[str] = None,
+        socket_options: Optional[Iterable[SOCKET_OPTION]] = None,
     ) -> AsyncNetworkStream:
-        exc_map = {
-            TimeoutError: ConnectTimeout,
-            OSError: ConnectError,
+        socket_options = socket_options or []
+        exc_map: ExceptionMapping = {
             anyio.BrokenResourceError: ConnectError,
+            anyio.EndOfStream: ConnectError,
+            ssl.SSLError: ConnectError,
         }
 
-        with map_exc(exc_map):
-            with anyio.fail_after(timeout):
-                stream = await anyio.connect_tcp(
-                    remote_host=remote_host,
-                    remote_port=remote_port,
-                    local_host=local_host,
-                )
-                return AnyIOStream(stream)
+        with map_exceptions(exc_map):
+            stream: Union[SocketStream, TLSStream]
+            # Create a TCP connection
+            stream = await anyio.connect_tcp(
+                remote_host=remote_host,
+                remote_port=remote_port,
+                local_host=local_host,
+            )
+
+            # Set socket options
+            for option in socket_options:
+                stream._raw_socket.setsockopt(*option)  # type: ignore[arg-type]
+
+            # Use TLS if ssl_context is provided
+            if ssl_context:
+                try:
+                    stream = await TLSStream.wrap(
+                        stream, ssl_context=ssl_context, hostname=ssl_server_hostname, server_side=False
+                    )
+                except Exception as exc:
+                    await stream.aclose()
+                    raise exc
+
+            return AnyIOStream(stream)
 
     async def create_tcp_server(
         self,
+        local_host: IPAddressType,
+        local_port: int,
         *,
-        local_host: Optional[str] = None,
-        local_port: int = 0,
-        timeout: Optional[float] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
+        reuse_port: bool = False,
+        reuse_addr: bool = False,
     ) -> AsyncServer:
-        exec_map = {
-            TimeoutError: ConnectTimeout,
+        exc_map: ExceptionMapping = {
             OSError: ConnectError,
             anyio.BrokenResourceError: ConnectError,
         }
-        with map_exc(exec_map):
-            with anyio.fail_after(timeout):
-                server = await anyio.create_tcp_listener(
-                    local_host=local_host,
-                    local_port=local_port,
-                )
-                return AnyIOTCPServer(server)
+        with map_exceptions(exc_map):
+            # `reuse_addr` is True by default in anyio and cannot be set to False
+            server = await anyio.create_tcp_listener(
+                local_host=local_host,
+                local_port=local_port,
+                reuse_port=reuse_port,
+            )
+            return AnyIOTCPServer(server, ssl_context=ssl_context)

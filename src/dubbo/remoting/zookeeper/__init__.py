@@ -1,5 +1,3 @@
-#!/bin/sh
-
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._base import (
+    AsyncChildrenListener,
+    AsyncDataListener,
+    AsyncStateListener,
+    AsyncZookeeperClient,
+    ChildrenListener,
+    ConnectionState,
+    DataEventType,
+    DataListener,
+    StateListener,
+    ZookeeperClient,
+)
 
-# Run tests
-coverage run -m pytest
-
-# Generate coverage report
-# TODO: shut down the coverage report for now, because the current code coverage is too low
-# coverage report --show-missing --skip-covered --fail-under=100
+__all__ = [
+    "AsyncChildrenListener",
+    "AsyncDataListener",
+    "AsyncStateListener",
+    "AsyncZookeeperClient",
+    "ChildrenListener",
+    "ConnectionState",
+    "DataEventType",
+    "DataListener",
+    "StateListener",
+    "ZookeeperClient",
+]

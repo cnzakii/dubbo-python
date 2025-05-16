@@ -16,7 +16,7 @@
 from typing import Any
 from urllib import parse as urlparse
 
-from dubbo.common import constant
+from dubbo.common import constants
 
 from .types import IPAddressType
 
@@ -36,6 +36,9 @@ def _regularize_path(raw: str) -> str:
     """
     path = raw.strip("/")
     return "/" + path if path else "/"
+
+
+_BOOL_TRUE = ("true", "1", "yes", "on")
 
 
 class URL:
@@ -215,7 +218,7 @@ class URL:
         :return: Value as boolean, or default if not found.
         """
         value = self._params.get(key)
-        return value.lower() in ("true", "1", "yes", "on") if value else default
+        return value.lower() in _BOOL_TRUE if value else default
 
     def remove_param(self, key: str) -> None:
         """
@@ -236,19 +239,67 @@ class URL:
         :param key: Logical field name
         :return: Corresponding value as string
         """
-        if key == constant.PROTOCOL_KEY:
+        if key == constants.PROTOCOL_KEY:
             return self.protocol
-        elif key == constant.USERNAME_KEY:
+        elif key == constants.USERNAME_KEY:
             return self.username
-        elif key == constant.PASSWORD_KEY:
+        elif key == constants.PASSWORD_KEY:
             return self.password
-        elif key == constant.HOST_KEY:
+        elif key == constants.HOST_KEY:
             return self.host
-        elif key == constant.PORT_KEY:
+        elif key == constants.PORT_KEY:
             return str(self.port)
-        elif key == constant.PATH_KEY:
+        elif key == constants.PATH_KEY:
             return self.path
         return self.get_param(key)
+
+    def get_method_param(self, method: str, key: str, default: str = "") -> str:
+        """
+        Retrieve a method-specific parameter value.
+
+        :param method: Method name
+        :param key: Parameter key
+        :param default: Default value if key not found
+        :return: Value if present, else default
+        """
+        method_key = f"{constants.METHODS_KEY}.{method}.{key}"
+        return self.get_param(method_key, default)
+
+    def get_method_param_int(self, method: str, key: str, default: int = 0) -> int:
+        """
+        Retrieve a method-specific parameter as an integer.
+
+        :param method: Method name
+        :param key: Parameter key
+        :param default: Default value if key not found
+        :return: Value as integer, or default if not found.
+        """
+        value = self.get_method_param(method, key)
+        return int(value) if value else default
+
+    def get_method_param_float(self, method: str, key: str, default: float = 0.0) -> float:
+        """
+        Retrieve a method-specific parameter as a float.
+
+        :param method: Method name
+        :param key: Parameter key
+        :param default: Default value if key not found
+        :return: Value as float, or default if not found.
+        """
+        value = self.get_method_param(method, key)
+        return float(value) if value else default
+
+    def get_method_param_bool(self, method: str, key: str, default: bool = False) -> bool:
+        """
+        Retrieve a method-specific parameter as a boolean.
+
+        :param method: Method name
+        :param key: Parameter key
+        :param default: Default value if key not found
+        :return: Value as boolean, or default if not found.
+        """
+        value = self.get_method_param(method, key)
+        return value.lower() in _BOOL_TRUE if value else default
 
     # ---------------------- Attribute Methods ----------------------
 
@@ -288,12 +339,12 @@ class URL:
         :return: Dictionary representation of the URL.
         """
         return {
-            constant.PROTOCOL_KEY: self.protocol,
-            constant.USERNAME_KEY: self.username,
-            constant.PASSWORD_KEY: self.password,
-            constant.HOST_KEY: self.host,
-            constant.PORT_KEY: str(self.port),
-            constant.PATH_KEY: self.path,
+            constants.PROTOCOL_KEY: self.protocol,
+            constants.USERNAME_KEY: self.username,
+            constants.PASSWORD_KEY: self.password,
+            constants.HOST_KEY: self.host,
+            constants.PORT_KEY: str(self.port),
+            constants.PATH_KEY: self.path,
             **self._params,
         }
 
@@ -305,9 +356,9 @@ class URL:
         :return: Full URL string.
         """
         netloc = f"{self.userinfo}@{self.location}" if self.username else self.location
-        query = urlparse.urlencode(self._params, encoding=constant.UTF_8)
+        query = urlparse.urlencode(self._params, encoding=constants.UTF_8)
         url = urlparse.urlunparse((self.protocol, netloc, self.path, "", query, ""))
-        return urlparse.quote(url, encoding=constant.UTF_8) if encode else url
+        return urlparse.quote(url, encoding=constants.UTF_8) if encode else url
 
     def copy(self) -> "URL":
         """
@@ -342,7 +393,7 @@ class URL:
         :return: URL object.
         """
         if decode:
-            url_str = urlparse.unquote(url_str, encoding=constant.UTF_8)
+            url_str = urlparse.unquote(url_str, encoding=constants.UTF_8)
 
         parsed = urlparse.urlparse(url_str)
         return URL(

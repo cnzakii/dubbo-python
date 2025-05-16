@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import typing
+from collections.abc import Awaitable
 from types import TracebackType
 from typing import Any, Callable, Optional, Union
 
@@ -23,7 +24,7 @@ from h2 import events as h2_events
 
 from dubbo import logger
 from dubbo.common.types import BytesLike
-from dubbo.remoting.h2 import AsyncHttp2Stream, Http2ErrorCodes, Http2Headers
+from dubbo.remoting.h2 import AsyncHttp2Stream, Headers, Http2ErrorCode, parse_headers
 from dubbo.remoting.h2.exceptions import (
     H2ProtocolError,
     H2StreamClosedError,
@@ -47,6 +48,8 @@ class _ReceivedData:
 
     __slots__ = ("_data_view", "_ack_size")
 
+    EMPTY_VIEW: memoryview = memoryview(b"")
+
     _data_view: memoryview
     _ack_size: int
 
@@ -64,21 +67,16 @@ class _ReceivedData:
         return size
 
     def is_empty(self) -> bool:
-        """
-        Return True if all data has been consumed.
-        """
+        """Return True if all data has been consumed."""
         return len(self._data_view) == 0
 
     def get_data(self, max_bytes: int) -> memoryview:
-        """
-        Return a memoryview of up to `max_bytes` of the data and advance the view.
-        """
+        """Return a memoryview of up to `max_bytes` of the data and advance the view."""
         view = self._data_view
 
         if max_bytes == -1 or max_bytes >= len(view):
-            # Return the entire view
             chunk = view
-            self._data_view = memoryview(b"")
+            self._data_view = self.EMPTY_VIEW
         else:
             chunk = view[:max_bytes]
             self._data_view = view[max_bytes:]
@@ -90,13 +88,28 @@ class _ReceivedData:
         """
         Create a _ReceivedData instance from a h2 event.
         """
-        return cls(memoryview(event.data or b""), event.flow_controlled_length or 0)
+        data_view = memoryview(event.data) if event.data else cls.EMPTY_VIEW
+        ack_size = event.flow_controlled_length or 0
+        return cls(data_view, ack_size)
 
 
-_DUMMY_RECEIVED_DATA = _ReceivedData(memoryview(b""), 0)
+_DUMMY_RECEIVED_DATA = _ReceivedData(_ReceivedData.EMPTY_VIEW, 0)
 
 
 class AnyIOHttp2Stream(AsyncHttp2Stream):
+    __slots__ = (
+        "_stream_id",
+        "_conn",
+        "_local_exc",
+        "_remote_exc",
+        "_window_update",
+        "_event_processors",
+        "_received_event",
+        "_received_headers",
+        "_received_trailers",
+        "_received_data_buffer",
+    )
+
     _stream_id: int
     _conn: "AnyIOHttp2Connection"
 
@@ -108,9 +121,10 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
     _window_update: anyio.Event
 
     # Received data
+    _event_processors: dict[type, Callable[[Any], Awaitable[None]]]
     _received_event: anyio.Event
-    _received_headers: Optional[Http2Headers]
-    _received_trailers: Optional[Http2Headers]
+    _received_headers: Optional[Headers]
+    _received_trailers: Optional[Headers]
 
     # Received data buffer
     # Note: this is a tuple of (prev_data, sender, receiver)
@@ -130,6 +144,17 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         self._received_trailers = None
         sender, receiver = anyio.create_memory_object_stream[_ReceivedData](max_buffer_size=1000)
         self._received_data_buffer = (_DUMMY_RECEIVED_DATA, sender, receiver)
+
+        self._event_processors = {
+            h2_events.RequestReceived: self._do_receive_headers,
+            h2_events.ResponseReceived: self._do_receive_headers,
+            h2_events.TrailersReceived: self._do_receive_trailers,
+            h2_events.DataReceived: self._do_receive_data,
+            h2_events.WindowUpdated: self._do_receive_window_update,
+            h2_events.StreamReset: self._do_receive_stream_reset,
+            h2_events.StreamEnded: self._do_receive_stream_ended,
+            h2_events.ConnectionTerminated: self._do_receive_connection_terminated,
+        }
 
         # Initialize local and remote exceptions
         if stream_id <= 0:
@@ -165,48 +190,63 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         """
         return self._stream_id
 
+    @property
+    def local_closed(self) -> bool:
+        """
+        Check if the stream is closed locally.
+        """
+        return self._local_exc is not None
+
+    @property
+    def remote_closed(self) -> bool:
+        """
+        Check if the stream is closed remotely.
+        """
+        return self._remote_exc is not None
+
     def _update_state(self, exc: Optional[Exception]) -> None:
         """
-        Update the local and remote exceptions based on the new exception.
-        - If exc is None, clears both local and remote exceptions.
-        - If exc is a hard termination, sets both sides to the exception.
-        - If exc is a H2StreamClosedError, merges existing close state.
+        Update the internal state with the given exception.
+
+        - If `exc` is None: reset both local and remote exceptions.
+        - If `exc` indicates a hard termination (H2StreamInactiveError or H2StreamResetError),
+          set both sides to the same exception.
+        - If `exc` is a H2StreamClosedError, merge with current state and update accordingly.
         """
         if not exc or isinstance(exc, (H2StreamInactiveError, H2StreamResetError)):
-            # These indicate hard termination: both sides are considered closed
             self._local_exc = exc
             self._remote_exc = exc
-            return
-
-        if isinstance(exc, H2StreamClosedError):
+        elif isinstance(exc, H2StreamClosedError):
             # Start with the incoming states
             local_side = exc.local_side
             remote_side = exc.remote_side
 
             # Merge with existing local and remote close states if present
-            for side_exc in (self._local_exc, self._remote_exc):
-                if isinstance(side_exc, H2StreamClosedError):
-                    local_side = side_exc.local_side or local_side
-                    remote_side = side_exc.remote_side or remote_side
+            if isinstance(self._local_exc, H2StreamClosedError):
+                local_side |= self._local_exc.local_side
+            if isinstance(self._remote_exc, H2StreamClosedError):
+                remote_side |= self._remote_exc.remote_side
 
             # Apply merged state to new exception
             exc.local_side = local_side
             exc.remote_side = remote_side
 
             # Update internal states based on sides
-            if local_side:
-                self._local_exc = exc
-            if remote_side:
-                self._remote_exc = exc
+            self._local_exc = exc if local_side else self._local_exc
+            self._remote_exc = exc if remote_side else self._remote_exc
 
-            if local_side and remote_side:
-                # unregister the stream
-                self._conn.stream_manager.unregister(self)
+        # Both sides are closed, unregister the stream
+        if self._local_exc and self._remote_exc:
+            self._conn.stream_manager.unregister(self)
 
-    def _initialize(self, headers: Http2Headers, end_stream: bool = False) -> None:
+    def _do_initialize(self, headers: Headers, end_stream: bool) -> None:
         """
         Initialize the stream.
         Note: Only client can initialize the stream.
+        :param headers: The headers to send.
+        :type headers: list[tuple[str, str]]
+        :param end_stream: Whether this is the last frame for the stream (i.e., end the stream).
+        :type end_stream: bool
         """
         if self._stream_id > 0:
             raise H2ProtocolError("Stream id is already set, cannot be changed")
@@ -221,7 +261,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         self._conn.stream_manager.register(self)
         self._do_send_headers(headers, end_stream)
 
-    def _do_send_headers(self, headers: Http2Headers, end_stream: bool) -> None:
+    def _do_send_headers(self, headers: Headers, end_stream: bool) -> None:
         """
         Send TRAILERS to the stream.
 
@@ -233,7 +273,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         h2_core = self._conn.h2_core
         h2_core.send_headers(
             stream_id=self._stream_id,
-            headers=headers.to_hpack(),
+            headers=headers,
             end_stream=end_stream,
         )
 
@@ -242,7 +282,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
             exc = H2StreamClosedError(self._stream_id, True, False)
             self._update_state(exc)
 
-    async def send_headers(self, headers: Http2Headers, end_stream: bool = False) -> None:
+    async def send_headers(self, headers: Headers, end_stream: bool = False) -> None:
         """
         Send HEADERS or TRAILERS to the stream.
 
@@ -253,7 +293,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         """
         if self._stream_id <= 0:
             # Stream is not initialized, initialize it with the provided headers
-            tracker = SendTracker(lambda: self._initialize(headers, end_stream))
+            tracker = SendTracker(lambda: self._do_initialize(headers, end_stream))
         else:
             # Stream already initialized, send headers frame
             tracker = SendTracker(lambda: self._do_send_headers(headers, end_stream))
@@ -315,7 +355,8 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
 
             if consumed == -1:
                 # Flow control window is zero, wait for a window update
-                self._window_update = anyio.Event()
+                if self._window_update.is_set():
+                    self._window_update = anyio.Event()
                 await self._window_update.wait()
             else:
                 # Data was sent, update the data view
@@ -330,7 +371,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         # send empty DATA frame
         await self.send_data(b"", end_stream=True)
 
-    def _do_reset(self, error_code: Union[Http2ErrorCodes, int]) -> None:
+    def _do_reset(self, error_code: Union[Http2ErrorCode, int]) -> None:
         """
         Send RST_STREAM to the stream.
         """
@@ -344,7 +385,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         exc = H2StreamResetError(self._stream_id, error_code, False, "Stream reset by local peer")
         self._update_state(exc)
 
-    async def reset(self, error_code: Union[Http2ErrorCodes, int] = Http2ErrorCodes.NO_ERROR) -> None:
+    async def reset(self, error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR) -> None:
         """
         Send RST_STREAM to the stream.
         """
@@ -352,51 +393,47 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         await self._conn.send(tracker)
         await tracker.result()
 
-    async def _wait_for_field(self, getter: Callable[[], Optional[Any]], timeout: Optional[float] = None) -> Any:
+    async def _wait_for_field(self, getter: Callable[[], Optional[Any]]) -> Any:
         """
-        Wait for a specific field (headers or trailers) to become available,
-        honoring total timeout duration.
+        Wait for a specific field (headers or trailers) to become available
 
         :param getter: Function to retrieve the awaited field.
-        :param timeout: Total timeout in seconds (None means wait indefinitely).
-        :return: The awaited value. If timeout and no value is received, returns None.
+        :return: The awaited value.
         :raises Exception: If a remote exception is raised.
         """
-        value: Any = None
-        with anyio.move_on_after(timeout):
-            while True:
-                value = getter()
-                if value is not None:
-                    break
+        while True:
+            value = getter()
+            if value is not None:
+                break
 
-                # If the stream is closed, raise the exception
-                if self._remote_exc:
-                    raise self._remote_exc
+            # If the stream is closed and no value is received, raise the exception
+            if self._remote_exc:
+                raise self._remote_exc
 
-                # If the value is None and the stream is not closed, wait for the event
-                if self._received_event.is_set():
-                    self._received_event = anyio.Event()
-                await self._received_event.wait()
+            # If the value is None and the stream is not closed, wait for the event
+            if self._received_event.is_set():
+                self._received_event = anyio.Event()
+            await self._received_event.wait()
 
         return value
 
-    async def receive_headers(self, timeout: Optional[float] = None) -> Optional[Http2Headers]:
+    async def receive_headers(self) -> Headers:
         """
         Wait until headers are received from the remote peer.
 
-        :param timeout: Optional timeout in seconds.
         :return: The received HTTP/2 headers. If timeout and no headers are received, returns None.
+        :raises Exception: If a remote exception is raised.
         """
-        return await self._wait_for_field(lambda: self._received_headers, timeout=timeout)
+        return await self._wait_for_field(lambda: self._received_headers)
 
-    async def receive_trailers(self, timeout: Optional[float] = None) -> Optional[Http2Headers]:
+    async def receive_trailers(self) -> Headers:
         """
         Wait until trailers are received from the remote peer.
 
-        :param timeout: Optional timeout in seconds.
         :return: The received HTTP/2 trailers. If timeout and no trailers are received, returns None.
+        :raises Exception: If a remote exception is raised.
         """
-        return await self._wait_for_field(lambda: self._received_trailers, timeout=timeout)
+        return await self._wait_for_field(lambda: self._received_trailers)
 
     def _do_ack_data(self, ack_size: int) -> None:
         """
@@ -410,48 +447,56 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         h2_core = self._conn.h2_core
         h2_core.acknowledge_received_data(ack_size, self._stream_id)
 
-    async def receive_data(self, max_bytes: int = -1, timeout: Optional[float] = None) -> bytes:
+    async def receive_data(self, max_bytes: int = -1, strict: bool = False) -> bytes:
         """
         Receive up to `max_bytes` of data from the stream.
 
-        :param max_bytes: The maximum number of bytes to receive (0 means no limit).
-        :param timeout: Optional timeout for waiting on data.
+        :param max_bytes: The maximum number of bytes to receive (-1 means no limit).
+        :param strict: Whether to enforce exactly max_bytes.
         :return: The received bytes.
-        :raises: Any stored remote exception.
+        :raises H2StreamInactiveError: If the stream is inactive.
+        :raises H2StreamClosedError: If the stream is closed before trailers arrive.
+        :raises H2StreamResetError: If the stream was reset before trailers arrived.
+        :raises RuntimeError: If `max_bytes` is less than 0 and `strict` is True.
         """
         prev_data, sender, receiver = self._received_data_buffer
-        outbound_data = bytearray()
+        chunks: list[memoryview] = []
         total_ack = 0
         total_bytes = 0
 
+        if max_bytes < 0 and strict:
+            raise RuntimeError("`max_bytes` must be greater than 0 when `strict` is True")
+
         try:
-            with anyio.move_on_after(timeout):
-                while max_bytes == -1 or total_bytes < max_bytes:
-                    # 1. get the data from the previous data
-                    if not prev_data.is_empty():
-                        chunk = prev_data.get_data(max_bytes)
-                        total_bytes += len(chunk)
-                        outbound_data.extend(chunk)
-                        total_ack += prev_data.ack_size
+            while max_bytes == -1 or total_bytes < max_bytes:
+                # 1. get the data from the previous data
+                if not prev_data.is_empty():
+                    chunk = prev_data.get_data(max_bytes - total_bytes if max_bytes > 0 else -1)
+                    total_bytes += len(chunk)
+                    chunks.append(chunk)
+                    total_ack += prev_data.ack_size
 
-                    # 2. Do we have enough data now?
-                    if not prev_data.is_empty():
-                        # previous data is not empty, we can break
-                        break
+                # 2. Do we have enough data now?
+                if not prev_data.is_empty():
+                    # previous data is not empty, we can break
+                    break
 
-                    # 3. Do we need to block to get data from a stream or not?
-                    if total_bytes > 0 and timeout is None:
-                        # We have received some, and the next step is to attempt to get more data non-blocking.
-                        prev_data = receiver.receive_nowait()
-                    else:
-                        # We have not received any data at present, so we need to wait blocked.
-                        prev_data = await receiver.receive()
+                # 3. Do we need to block to get data from a stream or not?
+                if total_bytes > 0 and not strict:
+                    # We have received some, and the pattern is not strict,
+                    # only attempting to get more data non-blocking.
+                    prev_data = receiver.receive_nowait()
+                else:
+                    # We have not received any data or have not obtained enough data,
+                    # then we need to wait for the blockage.
+                    prev_data = await receiver.receive()
+
         except (anyio.EndOfStream, anyio.BrokenResourceError, anyio.WouldBlock):
             # Ignore stream end or broken resource errors
             pass
 
-        if total_bytes == 0 and max_bytes > 0 and self._remote_exc:
-            # If we have not received any data and the stream is closed, raise the exception
+        if self._remote_exc and (total_bytes != max_bytes if strict else total_bytes == 0 and max_bytes > 0):
+            # Raise if no data was received, or strict mode was not fully satisfied due to stream closure.
             raise self._remote_exc
 
         # update the received data buffer
@@ -461,57 +506,82 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         if total_ack > 0:
             tracker = SendTracker(lambda: self._do_ack_data(total_ack), no_wait=True)
             await self._conn.send(tracker)
-            await tracker.exception()  # ignore the exception
+            await tracker.exception()  # Ignore the exception
 
-        return bytes(outbound_data)
+        return b"".join(chunks)
+
+    async def _do_receive_headers(self, event: Union[h2_events.RequestReceived, h2_events.ResponseReceived]) -> None:
+        self._received_headers = parse_headers(event.headers)
+
+    async def _do_receive_trailers(self, event: h2_events.TrailersReceived) -> None:
+        self._received_trailers = parse_headers(event.headers)
+
+    async def _do_receive_data(self, event: h2_events.DataReceived) -> None:
+        _, sender, _ = self._received_data_buffer
+
+        try:
+            sender.send_nowait(_ReceivedData.from_h2(event))
+        except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+            _LOGGER.error(
+                "[H2Stream] Stream closed — cannot process received data. stream_id={}, data_length={}",
+                self._stream_id,
+                len(event.data or b""),
+            )
+        except anyio.WouldBlock:
+            _LOGGER.error(
+                "[H2Stream] Receive buffer full — dropping data. stream_id={}, data_length={}",
+                self._stream_id,
+                len(event.data or b""),
+            )
+
+    async def _do_receive_window_update(self, event: h2_events.WindowUpdated) -> None:
+        # Notify the window update
+        self._window_update.set()
+
+    async def _do_receive_stream_reset(self, event: h2_events.StreamReset) -> None:
+        assert event.error_code is not None
+        exc = H2StreamResetError(self._stream_id, event.error_code, False, "Stream reset by remote peer")
+        await self._do_close_remote(exc)
+
+    async def _do_receive_stream_ended(self, event: h2_events.StreamEnded) -> None:
+        # Handle stream end
+        exc = H2StreamClosedError(self._stream_id, False, True)
+        await self._do_close_remote(exc)
+
+    async def _do_receive_connection_terminated(self, event: h2_events.ConnectionTerminated) -> None:
+        # Handle connection termination
+        exc = H2StreamClosedError(self._stream_id, True, True, "Connection terminated by remote peer")
+        await self._do_close_remote(exc)
+
+    async def _do_close_remote(self, exc: Exception) -> None:
+        # update the state
+        self._update_state(exc)
+
+        # close the receiver
+        _, sender, receiver = self._received_data_buffer
+        try:
+            await receiver.aclose()
+        except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+            pass
+
+    async def _do_close(self, exc: Exception) -> None:
+        """
+        Handle stream close event.
+        """
+        # handle stream reset or end
+        self._update_state(exc)
+        _, sender, _ = self._received_data_buffer
+        await sender.aclose()  # Close the sender to notify the receiver
 
     async def handle_event(self, event: h2_events.Event) -> None:
         """
         Handle the event from the h2 connection.
         """
-        if isinstance(event, (h2_events.RequestReceived, h2_events.ResponseReceived)):
-            # Handle request or response received
-            assert event.headers is not None
-            self._received_headers = Http2Headers.from_hpack(event.headers)
-        elif isinstance(event, h2_events.TrailersReceived):
-            # Handle trailers received
-            assert event.headers is not None
-            self._received_trailers = Http2Headers.from_hpack(event.headers)
-        elif isinstance(event, h2_events.DataReceived):
-            # Handle data received
-            _, sender, _ = self._received_data_buffer
-
-            try:
-                sender.send_nowait(_ReceivedData.from_h2(event))
-            except (anyio.BrokenResourceError, anyio.ClosedResourceError):
-                _LOGGER.error(
-                    f"[H2Stream] Stream closed — cannot process received data. "
-                    f"stream_id={self._stream_id}, data_length={len(event.data or b'')}"
-                )
-            except anyio.WouldBlock:
-                _LOGGER.error(
-                    f"[H2Stream] Receive buffer full — dropping data. "
-                    f"stream_id={self._stream_id}, data_length={len(event.data or b'')}"
-                )
-        elif isinstance(event, h2_events.WindowUpdated):
-            # Notify the window update
-            self._window_update.set()
-
-        # Update the state based on the event
-        if isinstance(event, (h2_events.StreamReset, h2_events.StreamEnded, h2_events.ConnectionTerminated)):
-            if isinstance(event, h2_events.StreamReset):
-                assert event.error_code is not None
-                exc = H2StreamResetError(self._stream_id, event.error_code, True, "Stream reset by remote peer")
-            elif isinstance(event, h2_events.ConnectionTerminated):
-                exc = H2StreamClosedError(self._stream_id, True, True, "Connection terminated by remote peer")  # type: ignore[assignment]
-            else:
-                exc = H2StreamClosedError(self._stream_id, False, True)  # type: ignore[assignment]
-
-            # handle stream reset or end
-            self._update_state(exc)
-            _, sender, _ = self._received_data_buffer
-            await sender.aclose()  # Close the sender to notify the receiver
+        processor = self._event_processors.get(type(event))
+        if processor:
+            await processor(event)
+        else:
+            _LOGGER.warning("Unknown event type: {}", type(event))
 
         # notify the received event
-        if not self._received_event.is_set():
-            self._received_event.set()
+        self._received_event.set()

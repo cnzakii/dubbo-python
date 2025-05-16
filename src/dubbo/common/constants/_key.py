@@ -22,3 +22,8 @@ PORT_KEY = "port"
 PATH_KEY = "path"
 
 TIMEOUT_KEY = "timeout"
+METHODS_KEY = "methods"
+METHOD_KEY = "method"
+WEIGHT_KEY = "weight"
+TIMESTAMP_KEY = "timestamp"
+WARMUP_KEY = "warmup"

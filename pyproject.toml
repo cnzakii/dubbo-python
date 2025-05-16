@@ -19,19 +19,16 @@ requires = ["hatchling", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
 
 [project]
-name="apache-dubbo"
+name = "apache-dubbo"
 requires-python = ">=3.9"
-authors = [
-    {name = "Apache Dubbo Community", email = "dev@dubbo.apache.org"}
-]
-maintainers = [
-    {name = "Apache Dubbo Community", email = "dev@dubbo.apache.org"}
-]
+dynamic = ["version", "readme"]
+authors = [{ name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }]
+maintainers = [{ name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }]
 description = "Python Implementation For Apache Dubbo."
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E.*"]
-keywords=["dubbo", "rpc","grpc", "dubbo-python", "http2", "network"]
-classifiers=[
+keywords = ["dubbo", "dubbo-python", "rpc", "grpc", "http2", "network"]
+classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -43,7 +40,9 @@ classifiers=[
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Framework :: AnyIO",
     "Framework :: AsyncIO",
+    "Framework :: Trio",
     "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
@@ -53,11 +52,10 @@ classifiers=[
 ]
 
 dependencies = [
+    "anyio>=4.9.0",
     "h2>=4.1.0",
-    "uvloop>=0.19.0; platform_system!='Windows'",
     "psutil>=6.0.0",
 ]
-dynamic = ["version", "readme"]
 
 
 [project.urls]
@@ -71,7 +69,18 @@ zookeeper = [
     "kazoo>=2.10.0",
 ]
 
-### Hatch settings ###
+
+[dependency-groups]
+dev = [
+    "hatch>=1.14.1",
+    "ruff>=0.11.10",
+    "pytest>=8.3.5",
+    "mypy>=1.15.0",
+    "pytest-cov>=6.1.1",
+]
+
+
+# ------------- Hatch settings -------------
 [tool.hatch.version]
 path = "src/dubbo/__about__.py"
 
@@ -80,6 +89,8 @@ include = [
     "/src",
     "/tests",
     "/README.md",
+    "/LICENSE",
+    "/NOTICE",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -94,13 +105,12 @@ path = "README.md"
 
 
 
-### Ruff settings ###
-
+# ------------- Ruff settings -------------
 # Top-level
 [tool.ruff]
 target-version = "py39"
 line-length = 120
-extend-exclude = ["samples/proto"]
+extend-exclude = ["**/*_pb2.py"]
 
 # Format
 [tool.ruff.format]
@@ -117,10 +127,11 @@ select = [
     "ASYNC", # flake8-async
     "ISC", # Checks for implicit literal string concatenation (auto-fixable)
     "LOG", # Checking the use of logging objects
-    "G",  # Check for logging format issues (auto-fixable)
+    "G", # Check for logging format issues (auto-fixable)
 ]
+
 ignore = [
-    "ISC001" # may casue conflict with ruff
+    "ISC001", # may casue conflict with ruff
 ]
 
 
@@ -128,34 +139,15 @@ ignore = [
 combine-as-imports = true
 
 section-order = [
-  "future",
-  "standard-library",
-  "third-party",
-  "first-party",
-  "local-folder"
-]
-
-### Coverage settings ###
-[tool.coverage.run]
-branch = true
-relative_files = true
-include = ["src/dubbo/*"]
-
-[tool.coverage.report]
-# Skip coverage report for 100% covered files
-skip_covered = true
-exclude_also = [
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "@(abc\\.)?abstractmethod",
-    "@(typing(_extensions)?\\.)?overload",
-    "if (typing(_extensions)?\\.)?TYPE_CHECKING:"
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder"
 ]
 
 
-### Mypy settings ###
+# ------------- Mypy settings -------------
 [tool.mypy]
 ignore_missing_imports = true
 
@@ -164,10 +156,35 @@ module = "tests.*"
 disallow_untyped_defs = false
 check_untyped_defs = true
 
-### Pytest settings ###
-[tool.pytest]
-addopts = "-rxXs"
+
+# ------------- Pytest settings ------------
+[tool.pytest.ini_options]
+addopts = "-rxXs --cov=src/dubbo --cov-report=term --cov-report=term-missing  --cov-fail-under=100"
 testpaths = ["tests"]
-python_files = [
-    "test_*.py"
+python_files = ["test_*.py"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "e2e: End-to-end tests",
+    "slow: Slow tests",
+    "fast: Fast tests",
+]
+
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning"
+]
+
+
+
+[tool.coverage.report]
+# Skip files with 100% coverage
+skip_covered = true
+exclude_lines = [
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "@(typing(_extensions)?\\.)?overload",
+    "if (typing(_extensions)?\\.)?TYPE_CHECKING:"
 ]

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DUBBO = "dubbo"
-
-UTF_8 = "utf-8"
-PROTOCOL_SEPARATOR = "://"
+from ._common import *  # noqa: F403
+from ._key import *  # noqa:  F403
+from ._value import *  # noqa: F403

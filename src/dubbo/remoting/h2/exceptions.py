@@ -16,7 +16,7 @@
 from typing import Optional, Union
 
 from dubbo.remoting.backend.exceptions import ConnectError, ProtocolError
-from dubbo.remoting.h2 import Http2ErrorCodes
+from dubbo.remoting.h2 import Http2ErrorCode
 
 
 class H2ProtocolError(ProtocolError):
@@ -29,6 +29,37 @@ class H2ConnectionError(ConnectError):
     """Raised when there is a connection-level HTTP/2 error."""
 
     __slots__ = ()
+
+
+class H2ConnectionTerminatedError(H2ConnectionError):
+    """
+    Raised when the HTTP/2 connection is terminated, either by sending or receiving a GOAWAY frame.
+    """
+
+    __slots__ = ("error_code", "last_stream_id", "additional_data", "remote_termination")
+
+    def __init__(
+        self,
+        error_code: Union[Http2ErrorCode, int],
+        last_stream_id: int,
+        additional_data: Optional[bytes],
+        remote_termination: bool,
+        message: Optional[str] = None,
+    ):
+        self.error_code = error_code if isinstance(error_code, Http2ErrorCode) else Http2ErrorCode(error_code)
+        self.last_stream_id = last_stream_id
+        self.additional_data = additional_data
+        self.remote_termination = remote_termination
+
+        if message is None:
+            direction = "Remote" if remote_termination else "Local"
+            message = (
+                f"{direction} termination of HTTP/2 connection with error "
+                f"{self.error_code.name} (0x{self.error_code.value:02X}), "
+                f"last_stream_id={last_stream_id}."
+            )
+
+        super().__init__(message)
 
 
 class H2StreamError(H2ProtocolError):
@@ -72,9 +103,9 @@ class H2StreamResetError(H2StreamError):
     __slots__ = ("error_code", "remote_reset")
 
     def __init__(
-        self, stream_id: int, error_code: Union[Http2ErrorCodes, int], remote_reset: bool, message: Optional[str] = None
+        self, stream_id: int, error_code: Union[Http2ErrorCode, int], remote_reset: bool, message: Optional[str] = None
     ):
-        self.error_code = error_code if isinstance(error_code, Http2ErrorCodes) else Http2ErrorCodes(error_code)
+        self.error_code = error_code if isinstance(error_code, Http2ErrorCode) else Http2ErrorCode(error_code)
         self.remote_reset = remote_reset
         if message is None:
             message = f"Stream reset with error code {self.error_code.name}({self.error_code.value})"

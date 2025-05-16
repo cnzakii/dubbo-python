@@ -15,10 +15,33 @@
 # limitations under the License.
 import enum
 
-__all__ = ["Http2ErrorCodes", "Http2SettingCodes"]
+__all__ = ["PseudoHeaderName", "Http2ErrorCode", "Http2SettingCode"]
 
 
-class Http2ErrorCodes(enum.IntEnum):
+class PseudoHeaderName(enum.StrEnum):
+    """
+    Pseudo header names for HTTP/2.
+    See: https://datatracker.ietf.org/doc/html/rfc7540#section-8.1.2.1
+
+    """
+
+    # ":method" - includes the HTTP method
+    METHOD = ":method"
+
+    # ":scheme" - includes the scheme portion of the target URI
+    SCHEME = ":scheme"
+
+    # ":authority" - includes the authority portion of the target URI
+    AUTHORITY = ":authority"
+
+    # ":path" - includes the path and query parts of the target URI
+    PATH = ":path"
+
+    # ":status" - includes the response status code
+    STATUS = ":status"
+
+
+class Http2ErrorCode(enum.IntEnum):
     """
     Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY frames
     to convey the reasons for the stream or connection error.
@@ -69,7 +92,7 @@ class Http2ErrorCodes(enum.IntEnum):
     HTTP_1_1_REQUIRED = 0xD
 
 
-class Http2SettingCodes(enum.IntEnum):
+class Http2SettingCode(enum.IntEnum):
     """
     The settings are used to communicate configuration parameters that affect how endpoints communicate.
     See: https://datatracker.ietf.org/doc/html/rfc7540#section-11.3

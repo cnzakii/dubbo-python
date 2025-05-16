@@ -1,5 +1,3 @@
-#!/bin/sh
-
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-export SOURCE_FILES="src/dubbo tests"
+from dubbo.__about__ import __version__
 
-# check code style
-echo "Checking code style..."
-ruff format $SOURCE_FILES --diff
-ruff check --output-format=github $SOURCE_FILES --config=pyproject.toml
+DEFAULT_TIMEOUT_VALUE = 10.0  # units: seconds
 
-# TODO：Temporarily disable mypy check, because it's too strict for now
-# mypy $SOURCE_FILES
+USER_AGENT = f"dubbo-python/{__version__}".lower()
 
-
-echo "Finished code style check."
+DEFAULT_WEIGHT = 100
+DEFAULT_WARMUP = 0

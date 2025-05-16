@@ -15,13 +15,80 @@
 # limitations under the License.
 
 import ipaddress
-from typing import Union
+import random
+import socket
+from typing import Optional, Union
 
 import psutil
+
+# Define constants for port ranges
+RND_PORT_START = 30000
+RND_PORT_RANGE = 10000
+
+# Valid port range is [1, 65535]
+MIN_PORT = 1
+MAX_PORT = 65535
 
 # Define constants for IP versions
 IPV4_VERSION = 4
 IPV6_VERSION = 6
+
+
+# Check if socket reuse address is supported
+reuse_address_supported = False
+try:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuse_address_supported = True
+except OSError:
+    pass
+
+
+def is_port_in_use(port: int) -> bool:
+    """
+    Check if the specified port is in use.
+
+    :param port: Port number to check
+    :return: True if port is in use, False otherwise
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if reuse_address_supported:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("0.0.0.0", port))
+            return False  # Port is available
+    except OSError:
+        return True  # Port is in use
+
+
+def get_random_port() -> int:
+    """
+    Get a random port in the range [RND_PORT_START, RND_PORT_START + RND_PORT_RANGE].
+
+    :return: A random port number
+    """
+    return RND_PORT_START + random.randint(0, RND_PORT_RANGE - 1)
+
+
+def get_available_port(port: Optional[int] = None) -> int:
+    """
+    Find an available port starting from the specified port or a random port.
+
+    :param port: Starting port number (optional)
+    :return: An available port number
+    """
+    if port is None:
+        port = get_random_port()
+
+    if port < MIN_PORT:
+        port = MIN_PORT
+
+    for i in range(port, MAX_PORT + 1):
+        if not is_port_in_use(i):
+            return i
+
+    # If we get here, no ports were available
+    raise OSError(f"No available ports found starting from {port}")
 
 
 def is_valid_host(host: str) -> bool:

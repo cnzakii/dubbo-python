@@ -14,11 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import contextlib
-from typing import Iterator, Type
+from collections.abc import Iterator
+
+# ==== Exception Mapping ====
+ExceptionMapping = dict[type[Exception], type[Exception]]
 
 
 @contextlib.contextmanager
-def map_exc(mapping: dict[Type[Exception], Type[Exception]]) -> Iterator[None]:
+def map_exceptions(mapping: ExceptionMapping) -> Iterator[None]:
     """
     Context manager to translate specific exceptions into custom exceptions.
 
@@ -85,8 +88,6 @@ class ReceiveTimeout(TimeoutException):
 
 
 # ==== Network I/O Exceptions ====
-
-
 class NetworkError(Exception):
     """Base class for network I/O related errors."""
 

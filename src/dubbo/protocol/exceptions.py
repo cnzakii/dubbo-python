@@ -1,5 +1,3 @@
-#!/bin/sh
-
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install dependencies for development
-REQUIREMENTS_DEV="requirements-dev.txt"
 
-# Upgrade pip
-pip install -U pip
+class RpcError(Exception):
+    """
+    Base class for all protocol-related exceptions.
+    """
 
-# Install dependencies
-pip install -r $REQUIREMENTS_DEV
+    pass
 
+
+class TripleError(RpcError):
+    """
+    Base class for all Triple protocol-related exceptions.
+    """
+
+    pass
+
+
+class EndOfStream(TripleError):
+    """
+    Exception raised when the end of stream is reached.
+    """
+
+    pass

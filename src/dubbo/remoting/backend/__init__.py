@@ -15,4 +15,20 @@
 # limitations under the License.
 
 from ._anyio import AnyIOBackend, AnyIOStream, AnyIOTCPServer
-from ._base import AsyncNetworkBackend, AsyncNetworkStream, AsyncServer
+from ._base import AsyncNetworkBackend, AsyncNetworkStream, AsyncServer, NetworkBackend, NetworkStream, Server
+from ._sync import SyncBackend, SyncStream, SyncTCPServer
+
+__all__ = [
+    "AnyIOBackend",
+    "AnyIOStream",
+    "AnyIOTCPServer",
+    "AsyncNetworkBackend",
+    "AsyncNetworkStream",
+    "AsyncServer",
+    "NetworkBackend",
+    "NetworkStream",
+    "Server",
+    "SyncBackend",
+    "SyncStream",
+    "SyncTCPServer",
+]

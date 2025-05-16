@@ -14,9 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._base import AsyncHttp2Connection, AsyncHttp2Stream
-from .headers import Http2Headers
-from .registries import Http2ErrorCodes, Http2SettingCodes
+from ._base import AsyncHttp2Connection, AsyncHttp2Stream, Headers, parse_headers
+from .registries import Http2ErrorCode, Http2SettingCode, PseudoHeaderName
 
 # isort: split
 from ._anyio import AnyIOHttp2Client, AnyIOHttp2Connection, AnyIOHttp2Stream, AnyIOHttp2Transport
+
+__all__ = [
+    "AsyncHttp2Connection",
+    "AsyncHttp2Stream",
+    "Headers",
+    "parse_headers",
+    "Http2ErrorCode",
+    "Http2SettingCode",
+    "PseudoHeaderName",
+    "AnyIOHttp2Client",
+    "AnyIOHttp2Connection",
+    "AnyIOHttp2Stream",
+    "AnyIOHttp2Transport",
+]

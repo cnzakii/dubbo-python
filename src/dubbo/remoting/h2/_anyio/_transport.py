@@ -13,12 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable
+from typing import Callable, Optional
 
+import anyio
 from h2.config import H2Configuration
 
 from dubbo import logger
-from dubbo.common import URL, constant
+from dubbo.common import URL, constants
 from dubbo.remoting.backend import AnyIOBackend, AsyncNetworkBackend, AsyncNetworkStream, AsyncServer
 
 from ._connection import AnyIOHttp2Connection
@@ -48,6 +50,8 @@ class AnyIOHttp2Server:
     """
     An HTTP/2 server connection using AnyIO.
     """
+
+    __slots__ = ("_server", "_handle_connection", "_handle_stream")
 
     _server: AsyncServer
     _handle_connection: Optional[Callable[[AnyIOHttp2Connection], Awaitable[None]]]
@@ -108,11 +112,12 @@ class AnyIOHttp2Transport:
         :raises ConnectTimeout: if connection times out
         :raises ConnectError: for other connection errors
         """
-        timeout = url.get_param_float(constant.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
+        timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
-        net_stream = await self._backend.connect_tcp(url.host, url.port, timeout=timeout)
-        _LOGGER.info(f"HTTP/2 connection established to {url.location}")
-        return AnyIOHttp2Client(net_stream)
+        with anyio.fail_after(timeout):
+            net_stream = await self._backend.connect_tcp(url.host, url.port)
+            _LOGGER.info("HTTP/2 connection established to {}", url.location)
+            return AnyIOHttp2Client(net_stream)
 
     async def bind(self, url: URL) -> AnyIOHttp2Server:
         """
@@ -121,7 +126,9 @@ class AnyIOHttp2Transport:
         :param url: URL object containing host, port, and query parameters
         :return: An established AnyIOHttp2Server connection
         """
-        timeout = url.get_param_float(constant.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
-        server = await self._backend.create_tcp_server(local_host=url.host, local_port=url.port, timeout=timeout)
-        _LOGGER.info(f"HTTP/2 server established to {url.location}")
-        return AnyIOHttp2Server(server)
+        timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
+
+        with anyio.fail_after(timeout):
+            server = await self._backend.create_tcp_server(local_host=url.host, local_port=url.port)
+            _LOGGER.info("HTTP/2 server established to {}", url.location)
+            return AnyIOHttp2Server(server)
