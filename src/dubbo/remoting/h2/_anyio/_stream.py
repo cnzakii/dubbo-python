@@ -22,8 +22,8 @@ import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from h2 import events as h2_events
 
-from dubbo import logger
 from dubbo.common.types import BytesLike
+from dubbo.logger import logger
 from dubbo.remoting.h2 import AsyncHttp2Stream, Headers, Http2ErrorCode, parse_headers
 from dubbo.remoting.h2.exceptions import (
     H2ProtocolError,
@@ -36,8 +36,6 @@ from ._tracker import SendTracker
 
 if typing.TYPE_CHECKING:
     from ._connection import AnyIOHttp2Connection
-
-_LOGGER = logger.get_instance()
 
 
 class _ReceivedData:
@@ -522,14 +520,14 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         try:
             sender.send_nowait(_ReceivedData.from_h2(event))
         except (anyio.BrokenResourceError, anyio.ClosedResourceError):
-            _LOGGER.error(
-                "[H2Stream] Stream closed — cannot process received data. stream_id={}, data_length={}",
+            logger.error(
+                "[H2Stream] Stream closed — cannot process received data. stream_id=%s, data_length=%d",
                 self._stream_id,
                 len(event.data or b""),
             )
         except anyio.WouldBlock:
-            _LOGGER.error(
-                "[H2Stream] Receive buffer full — dropping data. stream_id={}, data_length={}",
+            logger.error(
+                "[H2Stream] Receive buffer full — dropping data. stream_id=%s, data_length=%d",
                 self._stream_id,
                 len(event.data or b""),
             )
@@ -581,7 +579,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         if processor:
             await processor(event)
         else:
-            _LOGGER.warning("Unknown event type: {}", type(event))
+            logger.warning("[H2Stream] Unknown event type: %s", type(event))
 
         # notify the received event
         self._received_event.set()

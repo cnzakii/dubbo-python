@@ -22,8 +22,8 @@ from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError
 from kazoo.interfaces import IAsyncResult
 
-from dubbo import logger
 from dubbo.common import URL, constants
+from dubbo.logger import logger
 from dubbo.remoting.zookeeper import (
     AsyncChildrenListener,
     AsyncDataListener,
@@ -36,8 +36,6 @@ from ._base import (
     DataMultiListenerAdapterFactory,
     StateMultiListenerAdapter,
 )
-
-_LOGGER = logger.get_instance()
 
 
 class KazooFuture:
@@ -94,7 +92,7 @@ class AsyncKazooZookeeperClient(AsyncZookeeperClient):
     def __init__(self, url: URL) -> None:
         timeout = url.get_param_float(constants.TIMEOUT_KEY, constants.DEFAULT_TIMEOUT_VALUE)
         auth = [("digest", url.userinfo)] if url.userinfo else None
-        self._kazoo = KazooClient(hosts=url.location, timeout=timeout, auth_data=auth, logger=_LOGGER)
+        self._kazoo = KazooClient(hosts=url.location, timeout=timeout, auth_data=auth, logger=logger)
         self._data_factory = DataMultiListenerAdapterFactory(self._kazoo, is_async=True)
         self._children_factory = ChildrenMultiListenerAdapterFactory(self._kazoo, is_async=True)
         self._state_adapter = StateMultiListenerAdapter("/", is_async=True)

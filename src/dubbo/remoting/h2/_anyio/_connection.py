@@ -23,9 +23,9 @@ from h2 import events as h2_events
 from h2.config import H2Configuration
 from h2.connection import H2Connection
 
-from dubbo import logger
 from dubbo.common.types import BytesLike
 from dubbo.common.utils import common as common_utils
+from dubbo.logger import logger
 from dubbo.remoting.backend import AsyncNetworkStream
 from dubbo.remoting.backend.exceptions import ReceiveError, ReceiveTimeout, SendError, SendTimeout
 from dubbo.remoting.h2 import AsyncHttp2Connection, Http2ErrorCode, Http2SettingCode
@@ -35,9 +35,6 @@ from ._stream import AnyIOHttp2Stream
 from ._tracker import SendTracker, dummy_tracker
 
 __all__ = ["AnyIOHttp2Connection"]
-
-
-_LOGGER = logger.get_instance()
 
 
 class PingAckManager:
@@ -97,13 +94,13 @@ class PingAckManager:
                 # Await the callback if it is async
                 await callback()
             except Exception as e:
-                _LOGGER.error("Error while executing callback for ping ack: {}", e)
+                logger.error("Error while executing callback for ping ack: {}", e)
             finally:
                 # If there are still callbacks left, reassign them to the payload
                 if callbacks:
                     self._ping_ack_callbacks[payload] = callbacks
         else:
-            _LOGGER.debug("No callbacks registered for payload: {}", payload.hex())
+            logger.debug("No callbacks registered for payload: {}", payload.hex())
 
 
 async def _noop_stream_handler(stream: AnyIOHttp2Stream) -> None:
@@ -169,7 +166,7 @@ class StreamManager:
             raise H2ConnectionError("Cannot register stream: uninitialized stream_id.")
         self._streams[stream.stream_id] = stream
         self.count += 1
-        _LOGGER.debug("[HTTP/2] Stream {} registered.", stream.stream_id)
+        logger.debug("[HTTP/2] Stream {} registered.", stream.stream_id)
         # Start the stream handler in the task group
         self._conn.task_group.start_soon(self._stream_handler, stream)
 
@@ -183,7 +180,7 @@ class StreamManager:
         try:
             del self._streams[stream.stream_id]
             self.count -= 1
-            _LOGGER.debug("Stream {} unregistered.", stream.stream_id)
+            logger.debug("Stream {} unregistered.", stream.stream_id)
         except KeyError:
             raise H2ConnectionError("Stream {} is not registered.", stream.stream_id)
 
@@ -208,7 +205,7 @@ class StreamManager:
                 del self._streams[stream_id]
                 removed.append(stream_id)
         if removed:
-            _LOGGER.debug("[HTTP/2]Removed streams with IDs: {}", removed)
+            logger.debug("[HTTP/2]Removed streams with IDs: {}", removed)
             self.count -= len(removed)
 
     async def dispatch_event(self, event: h2_events.Event) -> None:
@@ -221,14 +218,14 @@ class StreamManager:
             # Broadcast to all streams
             for stream in self._streams.values():
                 await stream.handle_event(event)
-            _LOGGER.debug("[HTTP/2] Dispatched connection-level WindowUpdated to all streams.")
+            logger.debug("[HTTP/2] Dispatched connection-level WindowUpdated to all streams.")
         elif isinstance(event, h2_events.ConnectionTerminated):
             # Handle connection termination
             last_stream_id = event.last_stream_id or 0
             for stream in self._streams.values():
                 if stream.stream_id > last_stream_id:
                     await stream.handle_event(event)
-            _LOGGER.debug(
+            logger.debug(
                 "[HTTP/2] Dispatched connection-level ConnectionTerminated to streams.(ID > {})", last_stream_id
             )
             self.remove_stream(last_stream_id)
@@ -243,7 +240,7 @@ class StreamManager:
             if stream:
                 await stream.handle_event(event)
             else:
-                _LOGGER.warning("[HTTP/2] Stream {} not found for event: {}", stream_id, event)
+                logger.warning("[HTTP/2] Stream {} not found for event: {}", stream_id, event)
 
 
 class AnyIOHttp2Connection(AsyncExitStack, AsyncHttp2Connection):

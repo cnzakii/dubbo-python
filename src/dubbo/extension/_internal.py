@@ -18,7 +18,6 @@ from typing import Union
 
 from dubbo.cluster.loadbalance import LoadBalance
 from dubbo.compression import Compressor
-from dubbo.logger import DubboLogger
 
 
 @dataclass(frozen=True)
@@ -32,15 +31,6 @@ class ExtensionRegistry:
 
     interface: type
     impls: dict[str, Union[str, type]]
-
-
-loggerRegistry = ExtensionRegistry(
-    interface=DubboLogger,
-    impls={
-        "logging": "dubbo.logger._logging:LoggingLogger",
-        "loguru": "dubbo.logger._loguru:LoguruLogger",
-    },
-)
 
 
 loadBalanceRegistry = ExtensionRegistry(

@@ -50,4 +50,4 @@ jobs:
       - name: Sync environment
         run: "uv sync --all-extras --group dev"
       - name: Run tests
-        run: "uv run pytest"
+        run: "uv run pytest --cov=src/dubbo --cov-report=term-missing"

@@ -117,7 +117,15 @@ content-type = "text/markdown"
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 path = "README.md"
 
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+# Replace relative image paths with absolute ones
+pattern = 'src="(docs/img/.*?)"'
+replacement = 'src="https://raw.githubusercontent.com/apache/dubbo-python/main/\1"'
 
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+# Replace relative links with absolute ones
+pattern     = "\\[([^\\]]+)\\]\\((docs/[^)]+)\\)"
+replacement = "[$1](https://github.com/apache/dubbo-python/blob/main/$2)"
 
 # ------------- Ruff settings -------------
 # Top-level
@@ -173,7 +181,7 @@ check_untyped_defs = true
 
 # ------------- Pytest settings ------------
 [tool.pytest.ini_options]
-addopts = "-rxXs --cov=src/dubbo --cov-report=term-missing"
+addopts = "-rxXs"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 markers = [

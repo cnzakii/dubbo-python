@@ -147,7 +147,7 @@ Run the test suite and generate a coverage report:
 
 ```sh
 # Run pytest with coverage
-uv run pytest --cov-report=html
+uv run pytest --cov=src/dubbo --cov-report=html
 
 # Open the HTML report
 cd htmlcov

@@ -22,7 +22,7 @@ Visit [the official website](https://dubbo.apache.org/) for more information.
 
 
 ## Architecture
-<img src="./docs/img/Architecture.svg" alt="Architecture" style="zoom:30%;" />
+<img src="docs/img/Architecture.svg" alt="Architecture" style="zoom:30%;" />
 
 ## Features
 
@@ -127,7 +127,7 @@ It's as simple as the code snippet below. With just a few lines of code, you can
 
 We are excited to welcome contributions to the Dubbo-Python project! Whether you are fixing bugs, adding new features, or improving documentation, your input is highly valued.
 
-To ensure a smooth collaboration, please review our [Contributing Guide](./docs/CONTRIBUTING.md) for detailed instructions on how to get started, adhere to coding standards, and submit your contributions effectively.
+To ensure a smooth collaboration, please review our [Contributing Guide](docs/CONTRIBUTING.md) for detailed instructions on how to get started, adhere to coding standards, and submit your contributions effectively.
 
 ## License
 

@@ -19,14 +19,13 @@ from typing import Callable, Optional
 import anyio
 from h2.config import H2Configuration
 
-from dubbo import logger
+from dubbo.logger import logger
 from dubbo.common import URL, constants
 from dubbo.remoting.backend import AnyIOBackend, AsyncNetworkBackend, AsyncNetworkStream, AsyncServer
 
 from ._connection import AnyIOHttp2Connection
 from ._stream import AnyIOHttp2Stream
 
-_LOGGER = logger.get_instance()
 
 _DEFAULT_CONNECTION_TIMEOUT = 10  # seconds
 
@@ -76,7 +75,7 @@ class AnyIOHttp2Server:
 
             # wait until the connection is closed
             await conn.wait_until_closed()
-            _LOGGER.debug("HTTP/2 connection closed")
+            logger.debug("HTTP/2 connection closed")
 
     async def serve(
         self,
@@ -116,7 +115,7 @@ class AnyIOHttp2Transport:
 
         with anyio.fail_after(timeout):
             net_stream = await self._backend.connect_tcp(url.host, url.port)
-            _LOGGER.info("HTTP/2 connection established to {}", url.location)
+            logger.info("HTTP/2 connection established to %s", url.location)
             return AnyIOHttp2Client(net_stream)
 
     async def bind(self, url: URL) -> AnyIOHttp2Server:
@@ -130,5 +129,5 @@ class AnyIOHttp2Transport:
 
         with anyio.fail_after(timeout):
             server = await self._backend.create_tcp_server(local_host=url.host, local_port=url.port)
-            _LOGGER.info("HTTP/2 server established to {}", url.location)
+            logger.info("HTTP/2 server bound to %s", url.location)
             return AnyIOHttp2Server(server)
