@@ -1,57 +1,55 @@
 name: Lint and Test
-on: [push, pull_request]
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+  push:
+    branches: [main]
 
 
 jobs:
-
   lint:
+    name: Lint code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.7.4"
           enable-cache: true
-
-      - name: Syncing the environment
+      - name: Sync development environment
         run: "uv sync --group dev"
-
-      - name: Lint code
+      - name: Run Lint
         run: "scripts/lint.sh"
 
   tests:
-    name: "Python ${{ matrix.python-version }} on ${{ matrix.os }}"
+    name: "Tests (Python ${{ matrix.python-version }} on ${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "${{ matrix.python-version }}"
-
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.7.4"
           enable-cache: true
-
-      - name: Syncing the environment
+      - name: Sync environment
         run: "uv sync --all-extras --group dev"
-
       - name: Run tests
         run: "uv run pytest"

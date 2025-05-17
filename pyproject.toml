@@ -26,8 +26,11 @@ authors = [{ name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }]
 maintainers = [{ name = "Apache Dubbo Community", email = "dev@dubbo.apache.org" }]
 description = "Python Implementation For Apache Dubbo."
 license = "Apache-2.0"
-license-files = ["LICEN[CS]E.*"]
-keywords = ["dubbo", "dubbo-python", "rpc", "grpc", "http2", "network"]
+license-files = ["LICENSE", "NOTICE"]
+keywords = [
+    "dubbo", "dubbo-python", "apache-dubbo",
+    "rpc", "grpc", "http", "http2",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -49,6 +52,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Networking",
+    "Typing :: Typed"
 ]
 
 dependencies = [
@@ -68,16 +72,27 @@ Issues = "https://github.com/apache/dubbo/issues"
 zookeeper = [
     "kazoo>=2.10.0",
 ]
+logging-color = [
+    "colorlog>=6.9.0",
+]
+loguru = [
+    "loguru>=0.7.3",
+]
 
 
 [dependency-groups]
-dev = [
+build = [
     "hatch>=1.14.1",
+    "hatch-fancy-pypi-readme>=25.1.0",
+]
+dev = [
+    "pre-commit>=4.2.0",
     "ruff>=0.11.10",
-    "pytest>=8.3.5",
     "mypy>=1.15.0",
+    "pytest>=8.3.5",
     "pytest-cov>=6.1.1",
 ]
+
 
 
 # ------------- Hatch settings -------------
@@ -99,7 +114,6 @@ packages = ["src/dubbo"]
 
 [tool.hatch.metadata.hooks.fancy-pypi-readme]
 content-type = "text/markdown"
-
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 path = "README.md"
 
@@ -159,7 +173,7 @@ check_untyped_defs = true
 
 # ------------- Pytest settings ------------
 [tool.pytest.ini_options]
-addopts = "-rxXs --cov=src/dubbo --cov-report=term --cov-report=term-missing"
+addopts = "-rxXs --cov=src/dubbo --cov-report=term-missing"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 markers = [
@@ -170,11 +184,8 @@ markers = [
     "fast: Fast tests",
 ]
 
-filterwarnings = [
-    "ignore::pytest.PytestCollectionWarning"
-]
 
-
+# ---------------- Coverage Settings ----------------
 [tool.coverage.report]
 # Skip files with 100% coverage
 skip_covered = true

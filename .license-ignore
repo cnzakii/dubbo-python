@@ -10,7 +10,10 @@
 .asf.yaml
 LICENSE
 NOTICE
-requirements-dev.txt
+.pre-commit-config.yaml
+.python-version
+uv.lock
+
 
 # directories
 .vscode

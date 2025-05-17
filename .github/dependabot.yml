@@ -1,0 +1,15 @@
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+# Temporarily disable the automatic update of UV until the related features are mature.
+# View progress: https://github.com/dependabot/dependabot-core/issues/10478
+
+#  - package-ecosystem: "uv"
+#    directory: "/"
+#    schedule:
+#      interval: "weekly"

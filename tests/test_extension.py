@@ -37,6 +37,9 @@ class TestImpl1(TestInterface):
 
 
 class TestImpl2(TestInterface):
+    # Prevent pytest from treating this as a test case
+    __test__ = False
+
     def __init__(self, arg1=None, arg2=None):
         self.arg1 = arg1
         self.arg2 = arg2
