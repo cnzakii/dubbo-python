@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._base import Compressor, Decompressor, MessageEncoding
+from .base import Compressor, Decompressor, MessageEncoding
 
 __all__ = [
     "Compressor",

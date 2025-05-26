@@ -24,19 +24,18 @@ __all__ = ["LoadBalance", "get_weight"]
 
 
 def get_weight(invoker: Invoker, invocation: Invocation) -> int:
-    """
-    Get the weight of the invoker with warmup capability.
+    """Get the weight of the invoker with warmup capability.
 
-    This method calculates weight based on URL parameters and warming up time.
-    New services need warmup time to be fully functional, during this period
-    their weight is gradually increased.
+    Calculates weight based on URL parameters and warmup time. New services
+    need warmup time to be fully functional, during which their weight is
+    gradually increased from 1 to the configured value.
 
-    :param invoker: The service invoker.
-    :type invoker: Invoker
-    :param invocation: The service invocation context
-    :type invocation: Invocation
-    :return: Calculated weight value (minimum 0)
-    :rtype: int
+    Args:
+        invoker: The service invoker containing URL configuration.
+        invocation: The service invocation context with method information.
+
+    Returns:
+        Calculated weight value, minimum 0.
     """
     url = invoker.get_url()
     # TODO: Multiple registry scenario, load balance among multiple registries.
@@ -44,9 +43,9 @@ def get_weight(invoker: Invoker, invocation: Invocation) -> int:
 
     # Determine weight based on URL parameters
     if is_multiple:
-        weight = url.get_param_int(constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT)
+        weight = url.get_param_int(constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT_VALUE)
     else:
-        weight = url.get_method_param_int(invocation.method_name, constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT)
+        weight = url.get_method_param_int(invocation.method_name, constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT_VALUE)
 
         # Apply warmup adjustment for positive weights only
         if weight > 0:
@@ -54,7 +53,7 @@ def get_weight(invoker: Invoker, invocation: Invocation) -> int:
             if timestamp > 0:
                 # Calculate service uptime in milliseconds
                 uptime = max(int(time.time() * 1000) - timestamp, 1)
-                warmup = url.get_param_int(constants.WARMUP_KEY, constants.DEFAULT_WARMUP)
+                warmup = url.get_param_int(constants.WARMUP_KEY, constants.DEFAULT_WARMUP_VALUE)
 
                 # Adjust weight during warmup period
                 if 0 < uptime < warmup:
@@ -67,22 +66,22 @@ def get_weight(invoker: Invoker, invocation: Invocation) -> int:
 
 
 class LoadBalance(abc.ABC):
-    """
-    The load balance interface.
+    """Base class for load balancing strategies.
 
+    Defines the interface for selecting an invoker from a list of available
+    invokers based on the load balancing algorithm implementation.
     """
 
     @abc.abstractmethod
     def select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
-        """
-        Select an invoker from the list.
-        :param invokers: The invokers.
-        :type invokers: List[Invoker]
-        :param url: The URL.
-        :type url: URL
-        :param invocation: The invocation.
-        :type invocation: Invocation
-        :return: The selected invoker. If no invoker is selected, return None.
-        :rtype: Optional[Invoker]
+        """Select an invoker from the available invokers list.
+
+        Args:
+            invokers: List of available service invokers.
+            url: The request URL with configuration parameters.
+            invocation: The service invocation context.
+
+        Returns:
+            The selected invoker, or None if no suitable invoker is found.
         """
         raise NotImplementedError()

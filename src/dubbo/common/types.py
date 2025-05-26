@@ -13,12 +13,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import sys
 from ipaddress import IPv4Address, IPv6Address
 from typing import Union
 
-__all__ = ["StrOrBytes", "BytesLike", "IPAddressType"]
+# some compat code
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
+
+
+__all__ = ["TypeAlias", "StrOrBytes", "BytesLike", "HostLike"]
+
 
 StrOrBytes = Union[str, bytes, bytearray, memoryview]
 BytesLike = Union[bytes, bytearray, memoryview]
 
-IPAddressType = Union[str, IPv4Address, IPv6Address]
+HostLike = Union[str, IPv4Address, IPv6Address]

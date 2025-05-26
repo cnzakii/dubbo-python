@@ -26,89 +26,107 @@ __all__ = ["Protocol", "AsyncProtocol"]
 
 
 class Protocol(abc.ABC):
-    """
-    Protocol interface that defines methods for exporting services for remote invocation,
+    """Protocol interface for service export, reference, and resource management.
+
+    This interface defines methods for exporting services for remote invocation,
     referring remote services, and destroying protocol-related resources.
 
     Conventions:
-    - When the 'invoke()' method is called on the Invoker returned by 'refer()',
-      the protocol should execute the 'invoke()' method of the Invoker received by 'export()' with the same URL.
-    - The Invoker returned by 'refer()' is implemented by the protocol, and is responsible
-      for sending remote invocation requests.
-    - The Invoker passed to 'export()' is implemented by the framework and should not be managed by
-      the protocol implementation.
+        - When the 'invoke()' method is called on the Invoker returned by 'refer()',
+          the protocol should execute the 'invoke()' method of the Invoker received
+          by 'export()' with the same URL.
+        - The Invoker returned by 'refer()' is implemented by the protocol, and is
+          responsible for sending remote invocation requests.
+        - The Invoker passed to 'export()' is implemented by the framework and should
+          not be managed by the protocol implementation.
 
     Notes:
-    - Protocol implementations do not handle transparent proxy conversion; that is done at other layers.
-    - Protocols do not need to rely on TCP connections; they may be based on other IPC mechanisms like file sharing.
-    - Implementations must be thread-safe and generally follow singleton usage.
+        - Protocol implementations do not handle transparent proxy conversion; that is
+          done at other layers.
+        - Protocols do not need to rely on TCP connections; they may be based on other
+          IPC mechanisms like file sharing.
+        - Implementations must be thread-safe and generally follow singleton usage.
     """
 
     @abc.abstractmethod
     def export(self, invoker: "Invoker") -> "Exporter":
-        """
-        Export a service for remote invocation.
+        """Exports a service for remote invocation.
 
-        :param invoker: The service invoker to be exported.
-        :return: An Exporter reference for the exported service, which can be used to unexport later.
-        :raises RpcException: If an error occurs during export (e.g., port already in use).
+        Args:
+            invoker: The service invoker to be exported.
+
+        Returns:
+            Exporter: An Exporter reference for the exported service, which
+                can be used to unexport later.
+
+        Raises:
+            RpcException: If an error occurs during export (e.g., port already in use).
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def refer(self, url: URL) -> "Invoker":
-        """
-        Refer (connect to) a remote service.
+        """Refers to (connects with) a remote service.
 
-        :param url: The URL of the remote service to refer.
-        :return: An Invoker serving as a local proxy for the remote service.
-        :raises RpcException: If errors occur while connecting to the service provider.
+        Args:
+            url: The URL of the remote service to refer.
+
+        Returns:
+            Invoker: An Invoker serving as a local proxy for the remote service.
+
+        Raises:
+            RpcException: If errors occur while connecting to the service provider.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def destroy(self):
-        """
-        Destroy the protocol.
+        """Destroys the protocol and releases resources.
 
         Actions:
-        1. Cancel all services exported or referred by this protocol.
-        2. Release all occupied resources, such as network connections and ports.
-        3. The protocol may still export and refer new services after destruction.
+            1. Cancel all services exported or referred by this protocol.
+            2. Release all occupied resources, such as network connections and ports.
+            3. The protocol may still export and refer new services after destruction.
         """
         raise NotImplementedError()
 
 
 class AsyncProtocol(abc.ABC):
-    """
-    Asynchronous version of Protocol interface.
+    """Asynchronous version of Protocol interface.
 
-    Provides async methods to export services, refer remote services, and destroy protocol resources.
+    Provides async methods to export services, refer remote services,
+    and destroy protocol resources.
     """
 
     @abc.abstractmethod
     async def export(self, invoker: "AsyncInvoker") -> "AsyncExporter":
-        """
-        Asynchronously export a service for remote invocation.
+        """Asynchronously exports a service for remote invocation.
 
-        :param invoker: The async service invoker to export.
-        :return: An async Exporter for the exported service.
+        Args:
+            invoker: The async service invoker to export.
+
+        Returns:
+            AsyncExporter: An async Exporter for the exported service.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def refer(self, url: URL) -> "AsyncInvoker":
-        """
-        Asynchronously refer (connect to) a remote service.
+        """Asynchronously refers to (connects with) a remote service.
 
-        :param url: The URL of the remote service.
-        :return: An async Invoker serving as a local proxy.
+        Args:
+            url: The URL of the remote service.
+
+        Returns:
+            AsyncInvoker: An async Invoker serving as a local proxy.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def destroy(self):
-        """
-        Asynchronously destroy the protocol and release resources.
+        """Asynchronously destroys the protocol and releases resources.
+
+        Cancels all services exported or referred by this protocol and
+        releases all occupied resources like network connections and ports.
         """
         raise NotImplementedError()

@@ -30,8 +30,7 @@ _T = TypeVar("_T")
 
 
 class Invoker(Node, Generic[_T]):
-    """
-    Invoker interface for service invocation (API/SPI, Prototype, ThreadSafe).
+    """Invoker interface for service invocation (API/SPI, Prototype, ThreadSafe).
 
     This interface extends Node and defines the core method `invoke` to perform
     a service call invocation with the given invocation details.
@@ -39,32 +38,41 @@ class Invoker(Node, Generic[_T]):
 
     @abc.abstractmethod
     def invoke(self, invocation: "Invocation") -> "Result[_T]":
-        """
-        Perform the invocation with the provided invocation details.
+        """Performs the invocation with the provided invocation details.
 
-        :param invocation: The invocation information including method name, parameters, and other metadata.
-        :type invocation: Invocation
-        :return: The result of the invocation, encapsulating response data or errors.
-        :rtype: Result[_T]
-        :raises RpcError: In case of invocation failure or communication errors.
+        Args:
+            invocation: The invocation information including method name,
+                parameters, and other metadata.
+
+        Returns:
+            Result[_T]: The result of the invocation, encapsulating
+                response data or errors.
+
+        Raises:
+            RpcError: In case of invocation failure or communication errors.
         """
         raise NotImplementedError()
 
 
 class AsyncInvoker(AsyncNode, Generic[_T]):
-    """
-    Asynchronous Invoker interface for service invocation.
+    """Asynchronous Invoker interface for service invocation.
+
+    This interface extends AsyncNode to provide an asynchronous version of
+    the Invoker interface for non-blocking service invocation.
     """
 
     @abc.abstractmethod
     async def invoke(self, invocation: "Invocation") -> "AsyncResult[_T]":
-        """
-        Perform the asynchronous invocation with the given invocation details.
+        """Performs the asynchronous invocation with the given invocation details.
 
-        :param invocation: The invocation information including method name, parameters, and other metadata.
-        :type invocation: Invocation
-        :return: An awaitable result that resolves to the invocation response.
-        :rtype: AsyncResult[_T]
-        :raises RpcError: In case of invocation failure or communication errors.
+        Args:
+            invocation: The invocation information including method name,
+                parameters, and other metadata.
+
+        Returns:
+            AsyncResult[_T]: An awaitable result that resolves to the invocation response.
+
+        Raises:
+            RpcError: In case of invocation failure or communication errors.
         """
         raise NotImplementedError()

@@ -28,38 +28,22 @@ class TestRegularizePath:
     """
 
     def test_empty_path(self):
-        """
-        Test regularizing an empty path.
-
-        :return: None
-        """
+        """Test regularizing an empty path."""
         assert _regularize_path("") == "/"
         assert _regularize_path("/") == "/"
 
     def test_path_with_trailing_slashes(self):
-        """
-        Test regularizing paths with trailing slashes.
-
-        :return: None
-        """
+        """Test regularizing paths with trailing slashes."""
         assert _regularize_path("api/") == "/api"
         assert _regularize_path("api///") == "/api"
 
     def test_path_with_leading_slashes(self):
-        """
-        Test regularizing paths with leading slashes.
-
-        :return: None
-        """
+        """Test regularizing paths with leading slashes."""
         assert _regularize_path("/api") == "/api"
         assert _regularize_path("///api") == "/api"
 
     def test_path_with_both_slashes(self):
-        """
-        Test regularizing paths with both leading and trailing slashes.
-
-        :return: None
-        """
+        """Test regularizing paths with both leading and trailing slashes."""
         assert _regularize_path("/api/") == "/api"
         assert _regularize_path("///api///") == "/api"
 
@@ -71,10 +55,10 @@ class TestURL:
 
     @pytest.fixture
     def basic_url(self):
-        """
-        Fixture providing a basic URL instance for testing.
+        """Fixture providing a basic URL instance for testing.
 
-        :return: URL instance
+        Returns:
+            URL: A URL instance configured with test parameters.
         """
         return URL(
             protocol="dubbo",
@@ -88,11 +72,10 @@ class TestURL:
         )
 
     def test_init(self, basic_url):
-        """
-        Test URL initialization with all parameters.
+        """Test URL initialization with all parameters.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         assert basic_url.protocol == "dubbo"
         assert basic_url.username == "user"
@@ -105,11 +88,10 @@ class TestURL:
         assert basic_url.get_attribute("metadata") == {"key": "value"}
 
     def test_properties(self, basic_url):
-        """
-        Test URL properties and their setters.
+        """Test URL properties and their setters.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         # Test getters
         assert basic_url.protocol == "dubbo"
@@ -139,11 +121,7 @@ class TestURL:
         assert basic_url.port == 0
 
     def test_derived_properties(self):
-        """
-        Test derived properties like userinfo and location.
-
-        :return: None
-        """
+        """Test derived properties like userinfo and location."""
         # Test userinfo with both username and password
         url = URL(
             protocol="dubbo",
@@ -185,11 +163,10 @@ class TestURL:
         assert url.userinfo == ""
 
     def test_param_methods(self, basic_url):
-        """
-        Test parameter manipulation methods.
+        """Test parameter manipulation methods.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         # Test get_param
         assert basic_url.get_param("version") == "1.0"
@@ -245,11 +222,10 @@ class TestURL:
         assert basic_url.get_param("new_param") == ""
 
     def test_raw_param(self, basic_url):
-        """
-        Test get_raw_parm method for retrieving core URL fields.
+        """Test get_raw_parm method for retrieving core URL fields.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         assert basic_url.get_raw_parm(constants.PROTOCOL_KEY) == "dubbo"
         assert basic_url.get_raw_parm(constants.USERNAME_KEY) == "user"
@@ -261,11 +237,7 @@ class TestURL:
         assert basic_url.get_raw_parm("nonexistent") == ""
 
     def test_method_param_methods(self):
-        """
-        Test method-specific parameter methods.
-
-        :return: None
-        """
+        """Test method-specific parameter methods."""
         url = URL(
             protocol="dubbo",
             username="",
@@ -308,11 +280,10 @@ class TestURL:
         assert url.get_method_param_bool("sayHello", "nonexistent", True) is True
 
     def test_attribute_methods(self, basic_url):
-        """
-        Test attribute manipulation methods.
+        """Test attribute manipulation methods.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         # Test get_attribute
         assert basic_url.get_attribute("metadata") == {"key": "value"}
@@ -342,11 +313,10 @@ class TestURL:
         assert basic_url.get_attribute("attr2") is None
 
     def test_to_dict(self, basic_url):
-        """
-        Test converting URL to dictionary.
+        """Test converting URL to dictionary.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         url_dict = basic_url.to_dict()
         assert url_dict[constants.PROTOCOL_KEY] == "dubbo"
@@ -360,11 +330,7 @@ class TestURL:
         assert "metadata" not in url_dict  # attributes are not included
 
     def test_to_str(self):
-        """
-        Test converting URL to string representation.
-
-        :return: None
-        """
+        """Test converting URL to string representation."""
         url = URL(
             protocol="http",
             username="user",
@@ -397,11 +363,10 @@ class TestURL:
         assert url.to_str() == "http://example.com:8080/api/service?version=1.0"
 
     def test_copy_and_repr(self, basic_url):
-        """
-        Test copy and __repr__ methods.
+        """Test copy and __repr__ methods.
 
-        :param basic_url: Basic URL fixture
-        :return: None
+        Args:
+            basic_url: Basic URL fixture.
         """
         # Test copy
         url_copy = basic_url.copy()
@@ -431,11 +396,7 @@ class TestURL:
         assert repr(basic_url) == basic_url.to_str()
 
     def test_from_str(self):
-        """
-        Test creating URL from string.
-
-        :return: None
-        """
+        """Test creating URL from string."""
         # Complete URL with all components
         url_str = "http://user:pass@example.com:8080/api/service?version=1.0&group=test"
         url = URL.from_str(url_str)
@@ -479,11 +440,7 @@ class TestURLBuilder:
     """
 
     def test_init(self):
-        """
-        Test URLBuilder initialization.
-
-        :return: None
-        """
+        """Test URLBuilder initialization."""
         builder = URLBuilder()
         assert builder._protocol == ""
         assert builder._username == ""
@@ -495,11 +452,7 @@ class TestURLBuilder:
         assert builder._attributes == {}
 
     def test_fluent_api(self):
-        """
-        Test URLBuilder's fluent API.
-
-        :return: None
-        """
+        """Test URLBuilder's fluent API."""
         builder = URLBuilder()
 
         # Test method chaining
@@ -529,11 +482,7 @@ class TestURLBuilder:
         assert builder._attributes == {"metadata": {"key": "value"}}
 
     def test_build(self):
-        """
-        Test building URL from builder.
-
-        :return: None
-        """
+        """Test building URL from builder."""
         url = (
             URLBuilder()
             .protocol("dubbo")

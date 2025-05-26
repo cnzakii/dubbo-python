@@ -14,21 +14,72 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._anyio import AnyIOBackend, AnyIOStream, AnyIOTCPServer
-from ._base import AsyncNetworkBackend, AsyncNetworkStream, AsyncServer, NetworkBackend, NetworkStream, Server
-from ._sync import SyncBackend, SyncStream, SyncTCPServer
+"""Network backend abstraction layer for Dubbo-Python remoting.
+
+This module provides unified network transport abstractions for TCP, UDP, and Unix domain
+sockets, supporting both synchronous and asynchronous operations. It includes concrete
+implementations for sync sockets and async libraries (via AnyIO for asyncio/trio support).
+
+The design is inspired by httpcore's backend architecture (https://github.com/encode/httpcore)
+but extends it with datagram support and unified interfaces for both stream and datagram
+communications.
+
+Available Backends:
+    SyncBackend: Synchronous socket-based implementation
+    AnyIOBackend: Asynchronous implementation using AnyIO library
+
+Examples:
+    Creating an async TCP connection:
+        backend = AnyIOBackend()
+        stream = await backend.connect_tcp("localhost", 8080)
+        await stream.send(b"Hello")
+        data = await stream.receive()
+        await stream.aclose()
+
+    Creating a sync UDP server:
+        backend = SyncBackend()
+        server = backend.create_udp_server("0.0.0.0", 9090)
+        server.serve(handler_function)
+"""
+
+from .anyio import AnyIOBackend
+from .base import (
+    DEFAULT_MAX_BYTES,
+    SOCKET_OPTION,
+    AsyncNetworkBackend,
+    AsyncNetworkServer,
+    AsyncNetworkStream,
+    AsyncStreamHandlerType,
+    AsyncUDPDatagramHandlerType,
+    AsyncUNIXDatagramHandlerType,
+    NetworkBackend,
+    NetworkServer,
+    NetworkStream,
+    StreamHandlerType,
+    UDPDatagramHandlerType,
+    UDPPacketType,
+    UNIXDatagramHandlerType,
+    UNIXDatagramPacketType,
+)
+from .sync import SyncBackend
 
 __all__ = [
-    "AnyIOBackend",
-    "AnyIOStream",
-    "AnyIOTCPServer",
-    "AsyncNetworkBackend",
-    "AsyncNetworkStream",
-    "AsyncServer",
-    "NetworkBackend",
+    "DEFAULT_MAX_BYTES",
+    "SOCKET_OPTION",
+    "UDPPacketType",
+    "UNIXDatagramPacketType",
     "NetworkStream",
-    "Server",
+    "StreamHandlerType",
+    "UDPDatagramHandlerType",
+    "UNIXDatagramHandlerType",
+    "NetworkServer",
+    "NetworkBackend",
+    "AsyncNetworkStream",
+    "AsyncStreamHandlerType",
+    "AsyncUDPDatagramHandlerType",
+    "AsyncUNIXDatagramHandlerType",
+    "AsyncNetworkServer",
+    "AsyncNetworkBackend",
+    "AnyIOBackend",
     "SyncBackend",
-    "SyncStream",
-    "SyncTCPServer",
 ]

@@ -100,9 +100,6 @@ class AsyncTripleClientStream(AsyncIterator[_RecvType], Generic[_SendType, _Recv
     async def send_message(self, message: _SendType, end_stream: bool = False) -> None:
         """
         Send a message on the stream.
-
-        :param message: The message to send.
-        :param end_stream: Whether this is the last message in the stream.
         """
         if not self._init_metadata_sent:
             await self.start_request()

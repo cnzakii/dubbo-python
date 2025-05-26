@@ -31,11 +31,7 @@ from dubbo.remoting.zookeeper import (
     AsyncZookeeperClient,
 )
 
-from ._base import (
-    ChildrenMultiListenerAdapterFactory,
-    DataMultiListenerAdapterFactory,
-    StateMultiListenerAdapter,
-)
+from ._base import ChildrenAdapterFactory, DataAdapterFactory, StateListenerAdapter
 
 
 class KazooFuture:
@@ -85,17 +81,17 @@ class AsyncKazooZookeeperClient(AsyncZookeeperClient):
     __slots__ = ("_kazoo", "_state_adapter", "_data_factory", "_children_factory")
 
     _kazoo: KazooClient
-    _state_adapter: StateMultiListenerAdapter
-    _data_factory: DataMultiListenerAdapterFactory
-    _children_factory: ChildrenMultiListenerAdapterFactory
+    _state_adapter: StateListenerAdapter
+    _data_factory: DataAdapterFactory
+    _children_factory: ChildrenAdapterFactory
 
     def __init__(self, url: URL) -> None:
         timeout = url.get_param_float(constants.TIMEOUT_KEY, constants.DEFAULT_TIMEOUT_VALUE)
         auth = [("digest", url.userinfo)] if url.userinfo else None
         self._kazoo = KazooClient(hosts=url.location, timeout=timeout, auth_data=auth, logger=logger)
-        self._data_factory = DataMultiListenerAdapterFactory(self._kazoo, is_async=True)
-        self._children_factory = ChildrenMultiListenerAdapterFactory(self._kazoo, is_async=True)
-        self._state_adapter = StateMultiListenerAdapter("/", is_async=True)
+        self._data_factory = DataAdapterFactory(self._kazoo, is_async=True)
+        self._children_factory = ChildrenAdapterFactory(self._kazoo, is_async=True)
+        self._state_adapter = StateListenerAdapter("/", is_async=True)
         self._kazoo.add_listener(self._state_adapter)
 
     async def start(self) -> None:

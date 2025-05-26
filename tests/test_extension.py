@@ -15,7 +15,6 @@
 # limitations under the License.
 import abc
 import importlib
-from unittest import mock
 
 import pytest
 
@@ -65,20 +64,15 @@ class TestExtensionError:
     """
 
     def test_extension_error_inheritance(self):
-        """
-        Test that ExtensionError is a subclass of Exception.
-
-        :return: None
-        """
+        """Test that ExtensionError is a subclass of Exception."""
         assert issubclass(ExtensionError, Exception)
 
         # Verify we can instantiate and raise the error
         error = ExtensionError("Test error")
         assert str(error) == "Test error"
 
-        with pytest.raises(ExtensionError) as excinfo:
+        with pytest.raises(ExtensionError):
             raise ExtensionError("Test raising error")
-        assert str(excinfo.value) == "Test raising error"
 
 
 class TestExtensionLoader:
@@ -87,11 +81,7 @@ class TestExtensionLoader:
     """
 
     def test_init(self):
-        """
-        Test initialization of ExtensionLoader.
-
-        :return: None
-        """
+        """Test initialization of ExtensionLoader."""
         # Test initialization with interface only
         loader = ExtensionLoader(TestInterface)
         assert loader.interface == TestInterface
@@ -102,20 +92,16 @@ class TestExtensionLoader:
         assert loader.interface == TestInterface
 
         # Verify we can access the implementations
-        assert loader.get_impl("impl1") == TestImpl1
-        assert loader.get_impl("impl2") == TestImpl2
+        assert loader.load_class("impl1") == TestImpl1
+        assert loader.load_class("impl2") == TestImpl2
 
     def test_register(self):
-        """
-        Test registering implementations dynamically.
-
-        :return: None
-        """
+        """Test registering implementations dynamically."""
         loader = ExtensionLoader(TestInterface)
 
         # Register a class directly
         loader.register("impl1", TestImpl1)
-        assert loader.get_impl("impl1") == TestImpl1
+        assert loader.load_class("impl1") == TestImpl1
 
         # Register using a string path (mock using __module__ attribute)
         TestImpl2.__module__ = "dubbo.tests"
@@ -128,21 +114,42 @@ class TestExtensionLoader:
         with pytest.raises(TypeError):
             loader.register("bad_impl", 123)  # Not a class or string
 
-    def test_get_impl(self):
-        """
-        Test retrieving implementations by name.
+    def test_list_names(self):
+        """Test retrieving all implementation names."""
+        # Initialize loader with multiple implementations
+        impls = {"impl1": TestImpl1, "impl2": TestImpl2}
+        loader = ExtensionLoader(TestInterface, impls)
 
-        :return: None
-        """
+        # Get all implementation names
+        names = loader.list_names()
+
+        # Verify result is a list containing all names
+        assert isinstance(names, list)
+        assert set(names) == {"impl1", "impl2"}
+
+        # Test with empty loader
+        empty_loader = ExtensionLoader(TestInterface)
+        assert empty_loader.list_names() == []
+
+        # Test after registering a new implementation
+        empty_loader.register("impl1", TestImpl1)
+        assert empty_loader.list_names() == ["impl1"]
+
+        # Register another implementation and verify both are present
+        empty_loader.register("impl2", TestImpl2)
+        assert set(empty_loader.list_names()) == {"impl1", "impl2"}
+
+    def test_load_class(self):
+        """Test retrieving implementations by name."""
         loader = ExtensionLoader(TestInterface, {"impl1": TestImpl1})
 
         # Test getting a registered implementation
-        assert loader.get_impl("impl1") == TestImpl1
+        assert loader.load_class("impl1") == TestImpl1
 
         # Test getting a non-existent implementation
         with pytest.raises(ExtensionError) as excinfo:
-            loader.get_impl("non_existent")
-        assert "not found" in str(excinfo.value)
+            loader.load_class("non_existent")
+        assert "No implementation registered" in str(excinfo.value)
 
         # Test getting a registered implementation that doesn't extend the interface
         class NotAnImpl:
@@ -150,21 +157,17 @@ class TestExtensionLoader:
 
         loader = ExtensionLoader(TestInterface, {"bad_impl": NotAnImpl})
         with pytest.raises(ExtensionError) as excinfo:
-            loader.get_impl("bad_impl")
-        assert "not a subclass" in str(excinfo.value)
+            loader.load_class("bad_impl")
+        assert "does not subclass" in str(excinfo.value)
 
         # Test getting an implementation with an invalid string path format
         loader = ExtensionLoader(TestInterface, {"bad_path": "invalid_path"})
         with pytest.raises(ExtensionError) as excinfo:
-            loader.get_impl("bad_path")
+            loader.load_class("bad_path")
         assert "is invalid" in str(excinfo.value)
 
-    def test_get_impl_caching(self):
-        """
-        Test that implementations are cached after first retrieval.
-
-        :return: None
-        """
+    def test_load_class_caching(self):
+        """Test that implementations are cached after first retrieval."""
         # Create a test class that tracks instantiation
         call_count = 0
 
@@ -180,50 +183,46 @@ class TestExtensionLoader:
 
         # Patch importlib.import_module
         original_import = importlib.import_module
-        importlib.import_module = mock_import_module
+        importlib.import_module = mock_import_module  # type: ignore[assignment]
 
         try:
             loader = ExtensionLoader(TestInterface, {"impl1": "mock.module:TestImpl"})
 
             # First call should use import
-            impl1 = loader.get_impl("impl1")
+            impl1 = loader.load_class("impl1")
             assert impl1 == TestImpl1
             assert call_count == 1
 
             # Second call should use cache
-            impl2 = loader.get_impl("impl1")
+            impl2 = loader.load_class("impl1")
             assert impl2 == TestImpl1
             assert call_count == 1  # Call count should not increase
 
             # Test cache invalidation on re-registration
             loader.register("impl1", TestImpl2)
-            impl3 = loader.get_impl("impl1")
+            impl3 = loader.load_class("impl1")
             assert impl3 == TestImpl2
         finally:
             # Restore original import function
             importlib.import_module = original_import
 
-    def test_get_instance(self):
-        """
-        Test instantiation of implementations.
-
-        :return: None
-        """
+    def test_create_instance(self):
+        """Test instantiation of implementations."""
         loader = ExtensionLoader(TestInterface, {"impl1": TestImpl1, "impl2": TestImpl2})
 
         # Test simple instantiation
-        instance1 = loader.get_instance("impl1")
+        instance1 = loader.create_instance("impl1")
         assert isinstance(instance1, TestImpl1)
 
         # Test instantiation with arguments
-        instance2 = loader.get_instance("impl2", "value1", arg2="value2")
+        instance2 = loader.create_instance("impl2", "value1", arg2="value2")
         assert isinstance(instance2, TestImpl2)
         assert instance2.arg1 == "value1"
         assert instance2.arg2 == "value2"
 
         # Test instantiation of non-existent implementation
         with pytest.raises(ExtensionError):
-            loader.get_instance("non_existent")
+            loader.create_instance("non_existent")
 
 
 class TestExtensionManager:
@@ -233,11 +232,7 @@ class TestExtensionManager:
 
     @pytest.fixture
     def manager(self):
-        """
-        Fixture that creates an ExtensionManager with test loaders.
-
-        :return: An instance of ExtensionManager
-        """
+        """Fixture that creates an ExtensionManager with test loaders."""
         loaders = {
             TestInterface: ExtensionLoader(TestInterface, {"impl1": TestImpl1, "impl2": TestImpl2}),
             AnotherInterface: ExtensionLoader(AnotherInterface, {"another": AnotherImpl}),
@@ -248,8 +243,8 @@ class TestExtensionManager:
         """
         Test retrieving a loader by interface.
 
-        :param manager: ExtensionManager fixture
-        :return: None
+        Args:
+            manager (ExtensionManager): The manager fixture.
         """
         # Test getting a registered loader
         loader = manager.get_loader(TestInterface)
@@ -264,59 +259,90 @@ class TestExtensionManager:
             manager.get_loader(UnregisteredInterface)
         assert "No ExtensionLoader registered" in str(excinfo.value)
 
-    def test_get_impl(self, manager):
+    def test_list_names(self, manager):
+        """
+        Test retrieving all implementation names through the manager.
+
+        Args:
+            manager (ExtensionManager): The manager fixture.
+        """
+        # Get names for TestInterface
+        names = manager.list_names(TestInterface)
+        assert isinstance(names, list)
+        assert set(names) == {"impl1", "impl2"}
+
+        # Get names for AnotherInterface
+        names = manager.list_names(AnotherInterface)
+        assert isinstance(names, list)
+        assert set(names) == {"another"}
+
+        # Test with invalid interface
+        class UnregisteredInterface:
+            pass
+
+        with pytest.raises(ExtensionError):
+            manager.list_names(UnregisteredInterface)
+
+        # Register a new implementation and verify it appears in the list
+        loader = manager.get_loader(TestInterface)
+        loader.register("impl3", TestImpl1)
+        names = manager.list_names(TestInterface)
+        assert "impl3" in names
+        assert len(names) == 3
+
+    def test_load_class(self, manager):
         """
         Test retrieving an implementation class through the manager.
 
-        :param manager: ExtensionManager fixture
-        :return: None
+        Args:
+            manager (ExtensionManager): The manager fixture.
         """
         # Test getting a valid implementation
-        impl = manager.get_impl(TestInterface, "impl1")
+        impl = manager.load_class(TestInterface, "impl1")
         assert impl == TestImpl1
 
         # Test getting a non-existent implementation
         with pytest.raises(ExtensionError):
-            manager.get_impl(TestInterface, "non_existent")
+            manager.load_class(TestInterface, "non_existent")
 
         # Test getting from a non-existent loader
         class UnregisteredInterface:
             pass
 
         with pytest.raises(ExtensionError):
-            manager.get_impl(UnregisteredInterface, "impl1")
+            manager.load_class(UnregisteredInterface, "impl1")
 
-    def test_get_instance(self, manager):
+    def test_create_instance(self, manager):
         """
         Test instantiating an implementation through the manager.
 
-        :param manager: ExtensionManager fixture
-        :return: None
+        Args:
+            manager (ExtensionManager): The manager fixture.
         """
         # Test instantiating a simple implementation
-        instance1 = manager.get_instance(TestInterface, "impl1")
+        instance1 = manager.create_instance(TestInterface, "impl1")
         assert isinstance(instance1, TestImpl1)
 
         # Test instantiating with arguments
-        instance2 = manager.get_instance(TestInterface, "impl2", "value1", arg2="value2")
+        instance2 = manager.create_instance(TestInterface, "impl2", "value1", arg2="value2")
         assert isinstance(instance2, TestImpl2)
         assert instance2.arg1 == "value1"
         assert instance2.arg2 == "value2"
 
         # Test instantiating from another interface
-        instance3 = manager.get_instance(AnotherInterface, "another")
+        instance3 = manager.create_instance(AnotherInterface, "another")
         assert isinstance(instance3, AnotherImpl)
 
         # Test instantiating a non-existent implementation
         with pytest.raises(ExtensionError):
-            manager.get_instance(TestInterface, "non_existent")
+            manager.create_instance(TestInterface, "non_existent")
 
-    def test_register_impl(self, manager):
+    def test_register_extension(self, manager):
         """
         Test registering a new implementation through the manager.
 
-        :param manager: ExtensionManager fixture
-        :return: None
+        Args:
+            manager (ExtensionManager): The manager fixture.
         """
 
         # Define a new implementation
@@ -324,15 +350,16 @@ class TestExtensionManager:
             def method(self):
                 return "impl3"
 
-        # Register it through the manager
-        manager.register_impl(TestInterface, "impl3", TestImpl3)
+        # Get the loader and register the implementation
+        loader = manager.get_loader(TestInterface)
+        loader.register("impl3", TestImpl3)
 
         # Verify it was registered correctly
-        impl = manager.get_impl(TestInterface, "impl3")
+        impl = manager.load_class(TestInterface, "impl3")
         assert impl == TestImpl3
 
         # Test instantiation
-        instance = manager.get_instance(TestInterface, "impl3")
+        instance = manager.create_instance(TestInterface, "impl3")
         assert isinstance(instance, TestImpl3)
 
         # Test registering to a non-existent loader
@@ -340,7 +367,7 @@ class TestExtensionManager:
             pass
 
         with pytest.raises(ExtensionError):
-            manager.register_impl(UnregisteredInterface, "impl", TestImpl3)
+            manager.get_loader(UnregisteredInterface)
 
 
 @pytest.mark.integration
@@ -349,11 +376,12 @@ class TestIntegration:
     Integration tests for the extension system.
     """
 
-    def test_load_extensions(self):
+    def test_load_extensions(self, mocker):
         """
         Test the _load_extensions function by mocking the internal registry.
 
-        :return: None
+        Args:
+            mocker: pytest-mock fixture for mocking.
         """
         from dubbo.extension import _load_extensions
 
@@ -386,17 +414,18 @@ class TestIntegration:
             ]
 
             # Replace the function with safe patching
-            with mock.patch("dubbo.extension._internal.get_all_registries", return_value=registries):
-                # Call the function and verify the result
-                manager = _load_extensions()
-                assert isinstance(manager, ExtensionManager)
+            mocker.patch("dubbo.extension._internal.get_all_registries", return_value=registries)
 
-                # Test the loaded extensions
-                impl = manager.get_impl(TestInterface, "impl1")
-                assert impl == TestImpl1
+            # Call the function and verify the result
+            manager = _load_extensions()
+            assert isinstance(manager, ExtensionManager)
 
-                impl = manager.get_impl(AnotherInterface, "another")
-                assert impl == AnotherImpl
+            # Test the loaded extensions
+            impl = manager.load_class(TestInterface, "impl1")
+            assert impl == TestImpl1
+
+            impl = manager.load_class(AnotherInterface, "another")
+            assert impl == AnotherImpl
 
         except ImportError:
             pytest.skip("Could not import dubbo.extension._internal module")
@@ -404,11 +433,7 @@ class TestIntegration:
             pytest.fail(f"Error in test_load_extensions: {str(e)}")
 
     def test_real_get_all_registries(self):
-        """
-        Test the actual get_all_registries function to ensure it returns valid registries.
-
-        :return: None
-        """
+        """Test the actual get_all_registries function to ensure it returns valid registries."""
         try:
             # Import the real function
             import importlib.util
@@ -451,11 +476,7 @@ class TestIntegration:
             pytest.fail(f"Error testing get_all_registries: {str(e)}")
 
     def test_global_extension_manager(self):
-        """
-        Test that the global extension_manager is properly initialized.
-
-        :return: None
-        """
+        """Test that the global extension_manager is properly initialized."""
         try:
             from dubbo.extension import extension_manager
 
@@ -467,11 +488,7 @@ class TestIntegration:
             pytest.fail(f"Error testing global_extension_manager: {str(e)}")
 
     def test_extension_manager_real_extensions(self):
-        """
-        Test that the extension_manager has loaded real extensions from the codebase.
-
-        :return: None
-        """
+        """Test that the extension_manager has loaded real extensions from the codebase."""
         try:
             from dubbo.extension import extension_manager
 
@@ -488,12 +505,12 @@ class TestIntegration:
                 loader = extension_manager.get_loader(interface)
 
                 # Try to access impl_map attribute
-                impl_map = getattr(loader, "_impl_map", {})
+                impl_map = getattr(loader, "_impls", {})
 
                 # Try to get an implementation for validation
                 if impl_map:
                     impl_name = next(iter(impl_map.keys()))
-                    impl_class = loader.get_impl(impl_name)
+                    impl_class = loader.load_class(impl_name)
                     assert issubclass(impl_class, interface)
 
         except ImportError:

@@ -1,12 +1,7 @@
 name: License Template Check
 
-on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-  push:
+on: [push, pull_request]
+
 
 
 jobs:

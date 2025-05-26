@@ -78,7 +78,8 @@ class ZookeeperClient(abc.ABC):
         Opens network connections, negotiates a session with the ensemble,
         and prepares the client to perform operations.
 
-        :raises ZookeeperError: If the connection cannot be established.
+        Raises:
+            ZookeeperError: If an error occurs during startup, such as connection failure or authentication issues.
         """
         raise NotImplementedError()
 
@@ -86,7 +87,9 @@ class ZookeeperClient(abc.ABC):
     def connected(self) -> bool:
         """
         Check if the ZooKeeper client is currently connected.
-        :return: True if connected, False otherwise.
+
+        Returns:
+            True if connected, False otherwise.
         """
         raise NotImplementedError()
 
@@ -98,7 +101,8 @@ class ZookeeperClient(abc.ABC):
         Gracefully shuts down connections, cancels all active watches,
         and cleans up any internal state.
 
-        :raises ZookeeperError: If an error occurs during shutdown.
+        Raises:
+            ZookeeperError: If an error occurs during shutdown.
         """
         raise NotImplementedError()
 
@@ -115,17 +119,21 @@ class ZookeeperClient(abc.ABC):
         """
         Create a node at the given path with the provided data.
 
-        :param path:        The ZooKeeper node path to create.
-        :param value:       The initial data for the node (bytes).
-        :param acl:         Optional ACL list to apply to the node.
-        :param ephemeral:   If True, node is removed when session ends.
-        :param sequence:    If True, path is suffixed with a unique sequence number.
-        :param makepath:    If True, create missing parent nodes recursively.
-        :return:            The real path of the created node, including any sequence suffix.
+        Args:
+            path: The ZooKeeper node path to create.
+            value: The initial data for the node (bytes).
+            acl: Optional ACL list to apply to the node.
+            ephemeral: If True, node is removed when session ends.
+            sequence: If True, path is suffixed with a unique sequence number.
+            makepath: If True, create missing parent nodes recursively.
 
-        :raises NodeExistsError:     If the node already exists (non-sequential).
-        :raises NoNodeError:         If a parent node is missing and makepath is False.
-        :raises ZookeeperError:      For any other server-side error.
+        Returns:
+            The real path of the created node, including any sequence suffix.
+
+        Raises:
+            NodeExistsError: If the node already exists (non-sequential).
+            NoNodeError: If a parent node is missing and makepath is False.
+            ZookeeperError: For any other server-side error.
         """
         raise NotImplementedError()
 
@@ -134,10 +142,14 @@ class ZookeeperClient(abc.ABC):
         """
         Check whether a node exists at the specified path.
 
-        :param path: The ZooKeeper node path to check.
-        :return:     True if the node exists, False otherwise.
+        Args:
+            path: The ZooKeeper node path to check.
 
-        :raises ZookeeperError: If an error occurs during the check.
+        Returns:
+            True if the node exists, False otherwise.
+
+        Raises:
+            ZookeeperError: If an error occurs during the check.
         """
         raise NotImplementedError()
 
@@ -146,11 +158,13 @@ class ZookeeperClient(abc.ABC):
         """
         Delete the node at the given path.
 
-        :param path:      The ZooKeeper node path to delete.
-        :param recursive: If True, delete all children recursively.
+        Args:
+            path: The ZooKeeper node path to delete.
+            recursive: If True, delete all children recursively.
 
-        :raises NoNodeError:    If the node does not exist.
-        :raises ZookeeperError: For any other server-side error.
+        Raises:
+            NoNodeError: If the node does not exist.
+            ZookeeperError: For any other server-side error.
         """
         raise NotImplementedError()
 
@@ -159,11 +173,15 @@ class ZookeeperClient(abc.ABC):
         """
         Retrieve the data stored at the specified node path.
 
-        :param path: The ZooKeeper node path to read.
-        :return:     The raw data bytes of the node.
+        Args:
+            path: The ZooKeeper node path to read.
 
-        :raises NoNodeError:    If the node does not exist.
-        :raises ZookeeperError: For any other server-side error.
+        Returns:
+            The raw data bytes of the node.
+
+        Raises:
+            NoNodeError: If the node does not exist.
+            ZookeeperError: For any other server-side error.
         """
         raise NotImplementedError()
 
@@ -172,11 +190,15 @@ class ZookeeperClient(abc.ABC):
         """
         List the direct children of the specified node.
 
-        :param path: The ZooKeeper node path whose children to list.
-        :return:     A list of child node names.
+        Args:
+            path: The ZooKeeper node path whose children to list.
 
-        :raises NoNodeError:    If the node does not exist.
-        :raises ZookeeperError: For any other server-side error.
+        Returns:
+            A list of child node names.
+
+        Raises:
+            NoNodeError: If the node does not exist.
+            ZookeeperError: For any other server-side error.
         """
         raise NotImplementedError()
 
@@ -185,7 +207,8 @@ class ZookeeperClient(abc.ABC):
         """
         Register a state listener to receive connection state changes.
 
-        :param listener: An implementation of StateListener to receive callbacks.
+        Args:
+            listener: An implementation of StateListener to receive callbacks.
         """
         raise NotImplementedError()
 
@@ -194,7 +217,8 @@ class ZookeeperClient(abc.ABC):
         """
         Unregister a previously added state listener.
 
-        :param listener: The listener to remove.
+        Args:
+            listener: The listener to remove.
         """
         raise NotImplementedError()
 
@@ -206,8 +230,9 @@ class ZookeeperClient(abc.ABC):
         The listener will be notified when the node is created, updated,
         deleted, or when its children change.
 
-        :param path:     The ZooKeeper node path to watch.
-        :param listener: An implementation of DataListener to receive callbacks.
+        Args:
+            path: The ZooKeeper node path to watch.
+            listener: An implementation of DataListener to receive callbacks.
         """
         raise NotImplementedError()
 
@@ -216,8 +241,9 @@ class ZookeeperClient(abc.ABC):
         """
         Unregister a previously added data listener from the specified node.
 
-        :param path:     The ZooKeeper node path.
-        :param listener: The listener to remove.
+        Args:
+            path: The ZooKeeper node path.
+            listener: The listener to remove.
         """
         raise NotImplementedError()
 
@@ -229,8 +255,9 @@ class ZookeeperClient(abc.ABC):
         The listener will be notified when the direct children of the node
         are added or removed.
 
-        :param path:     The ZooKeeper node path to watch.
-        :param listener: An implementation of ChildrenListener to receive callbacks.
+        Args:
+            path: The ZooKeeper node path to watch.
+            listener: An implementation of ChildrenListener to receive callbacks.
         """
         raise NotImplementedError()
 
@@ -239,8 +266,9 @@ class ZookeeperClient(abc.ABC):
         """
         Unregister a previously added children listener from the specified node.
 
-        :param path:     The ZooKeeper node path.
-        :param listener: The listener to remove.
+        Args:
+            path: The ZooKeeper node path.
+            listener: The listener to remove.
         """
         raise NotImplementedError()
 

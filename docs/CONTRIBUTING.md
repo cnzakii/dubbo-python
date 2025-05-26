@@ -39,8 +39,20 @@ To report a bug or request a feature, use the [GitHub Issue templates](https://g
 
 Our Python code follows the [PEP 8 style guide](https://peps.python.org/pep-0008/) with these adjustments:
 
-1. **Maximum Line Length:** Up to 120 characters.
-2. **Docstrings and Comments:** Use reStructuredText format.
+1. **Maximum Line Length:** Limit lines to 120 characters.
+2. **Docstrings and Comments:** Use Google-style docstrings for all public functions and methods.
+   - Example:
+     ```python
+     def example_method(param1: str, param2: int) -> None:
+         """Example method that does something.
+
+         Args:
+             param1 (str): Description of the first parameter.
+             param2 (int): Description of the second parameter.
+         """
+         # This is an inline comment explaining a specific line
+         print(param1, param2)
+     ```
 3. **Type Hints:** All public functions and methods must include type annotations consistent with [PEP 484](https://peps.python.org/pep-0484/).
 4. **Imports:** Grouped in the order: standard library, third-party, local imports, each separated by a blank line.
 5. **Indentation:** 4 spaces; no tabs.

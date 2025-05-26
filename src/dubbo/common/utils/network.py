@@ -13,13 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import ipaddress
 import random
 import socket
 from typing import Optional, Union
 
 import psutil
+
+from dubbo.common.types import HostLike
 
 # Define constants for port ranges
 RND_PORT_START = 30000
@@ -45,11 +46,13 @@ except OSError:
 
 
 def is_port_in_use(port: int) -> bool:
-    """
-    Check if the specified port is in use.
+    """Check if the specified port is in use.
 
-    :param port: Port number to check
-    :return: True if port is in use, False otherwise
+    Args:
+        port: Port number to check.
+
+    Returns:
+        True if port is in use, False if available.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -62,20 +65,29 @@ def is_port_in_use(port: int) -> bool:
 
 
 def get_random_port() -> int:
-    """
-    Get a random port in the range [RND_PORT_START, RND_PORT_START + RND_PORT_RANGE].
+    """Get a random port in the default range.
 
-    :return: A random port number
+    Returns:
+        Random port number between RND_PORT_START and RND_PORT_START + RND_PORT_RANGE.
     """
     return RND_PORT_START + random.randint(0, RND_PORT_RANGE - 1)
 
 
 def get_available_port(port: Optional[int] = None) -> int:
-    """
-    Find an available port starting from the specified port or a random port.
+    """Find an available port starting from the specified port.
 
-    :param port: Starting port number (optional)
-    :return: An available port number
+    Args:
+        port: Starting port number. If None, uses a random port.
+
+    Returns:
+        First available port number found.
+
+    Raises:
+        OSError: If no available ports are found.
+
+    Example:
+        available_port = get_available_port(8080)
+        random_available_port = get_available_port()
     """
     if port is None:
         port = get_random_port()
@@ -92,10 +104,13 @@ def get_available_port(port: Optional[int] = None) -> int:
 
 
 def is_valid_host(host: str) -> bool:
-    """
-    Check if the provided host is a valid IP address.
-    :param host: The host address to check
-    :return: True if the host is a valid IP address, False otherwise
+    """Check if the provided host is a valid IP address.
+
+    Args:
+        host: The host address to validate.
+
+    Returns:
+        True if the host is a valid IP address, False otherwise.
     """
     try:
         ipaddress.ip_address(host)  # Try to parse the host address
@@ -105,11 +120,14 @@ def is_valid_host(host: str) -> bool:
 
 
 def _is_valid_ip_version(host: str, ip_version: int) -> bool:
-    """
-    Check if the provided host is a valid IP address of the specified version (IPv4/IPv6).
-    :param host: The host address to check
-    :param ip_version: The IP version to check against (4 for IPv4, 6 for IPv6)
-    :return: True if the host is a valid IP address of the specified version, False otherwise
+    """Check if the host is a valid IP address of the specified version.
+
+    Args:
+        host: The host address to validate.
+        ip_version: The IP version to check against (4 for IPv4, 6 for IPv6).
+
+    Returns:
+        True if the host is a valid IP address of the specified version.
     """
     try:
         ip = ipaddress.ip_address(host)
@@ -119,33 +137,101 @@ def _is_valid_ip_version(host: str, ip_version: int) -> bool:
 
 
 def is_valid_ipv4(host: str) -> bool:
-    """
-    Check if the provided host is a valid IPv4 address.
-    :param host: The host address to check
-    :return: True if the host is a valid IPv4 address, False otherwise
+    """Check if the host is a valid IPv4 address.
+
+    Args:
+        host: The host address to validate.
+
+    Returns:
+        True if the host is a valid IPv4 address.
     """
     return _is_valid_ip_version(host, IPV4_VERSION)
 
 
 def is_valid_ipv6(host: str) -> bool:
-    """
-    Check if the provided host is a valid IPv6 address.
-    :param host: The host address to check
-    :return: True if the host is a valid IPv6 address, False otherwise
+    """Check if the host is a valid IPv6 address.
+
+    Args:
+        host: The host address to validate.
+
+    Returns:
+        True if the host is a valid IPv6 address.
     """
     return _is_valid_ip_version(host, IPV6_VERSION)
 
 
-def get_local_host(ip_version: int = IPV4_VERSION) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]:
-    """
-    Get a valid local IP address of the specified version.
-    If no valid address is found, raises an OSError.
+def get_address_family(host: HostLike) -> socket.AddressFamily:
+    """Determine the address family (IPv4/IPv6) for the given host.
 
-    :param ip_version: IP version, default is IPv4. Options: IPv4 (4), IPv6 (6)
-    :type ip_version: int
-    :return: Returns a valid local IP address object
-    :rtype: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-    :raises OSError: If no valid IP address is found, an exception is raised
+    This function attempts to resolve the host to an IP address and returns
+    the corresponding socket address family. It supports both IP addresses
+    and domain names.
+
+    Args:
+        host: The host to determine the address family for. Can be a string
+              (IP address or domain name), IPv4Address, or IPv6Address object.
+
+    Returns:
+        socket.AddressFamily: AF_INET for IPv4 addresses, AF_INET6 for IPv6
+                             addresses, or AF_UNSPEC if the address family
+                             cannot be determined.
+    """
+    # If host is already an IP address object, check its version directly
+    if isinstance(host, ipaddress.IPv4Address):
+        return socket.AF_INET
+    elif isinstance(host, ipaddress.IPv6Address):
+        return socket.AF_INET6
+
+    # Convert to string if not already
+    host_str = str(host)
+
+    # First, try to parse as an IP address directly
+    try:
+        ip_addr = ipaddress.ip_address(host_str)
+        if ip_addr.version == IPV4_VERSION:
+            return socket.AF_INET
+        elif ip_addr.version == IPV6_VERSION:
+            return socket.AF_INET6
+    except ValueError:
+        # Not a valid IP address, try to resolve as hostname
+        pass
+
+    # Try to resolve the hostname using getaddrinfo
+    try:
+        # Use getaddrinfo to resolve the hostname and get address family
+        # We use AF_UNSPEC to allow both IPv4 and IPv6 resolution
+        addr_info = socket.getaddrinfo(host_str, None, socket.AF_UNSPEC)
+        if addr_info:
+            # Return the address family of the first resolved address
+            return addr_info[0][0]
+    except (socket.gaierror, OSError):
+        # Hostname resolution failed
+        pass
+
+    # If all attempts fail, return AF_UNSPEC
+    return socket.AF_UNSPEC
+
+
+def get_local_host(ip_version: int = IPV4_VERSION) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]:
+    """Get a valid local IP address of the specified version.
+
+    Scans all network interfaces to find a suitable local IP address that is
+    not multicast, reserved, link-local, or loopback.
+
+    Args:
+        ip_version: IP version to search for. Defaults to IPv4 (4).
+                   Valid options are 4 (IPv4) or 6 (IPv6).
+
+    Returns:
+        A valid local IP address object for the specified version.
+
+    Raises:
+        ValueError: If ip_version is not 4 or 6.
+        OSError: If no valid IP address is found.
+
+    Example:
+        ipv4_addr = get_local_host(4)
+        ipv6_addr = get_local_host(6)
     """
     if ip_version not in (IPV4_VERSION, IPV6_VERSION):
         raise ValueError(f"Invalid IP version: {ip_version}. Must be {IPV4_VERSION} or {IPV6_VERSION}.")

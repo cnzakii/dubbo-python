@@ -22,16 +22,24 @@ __all__ = ["ExtensionLoader"]
 
 
 class ExtensionLoader:
-    """
-    Extension loader that dynamically loads implementation classes for a given interface.
-    Supports mapping from name to module path or class, returning type-safe implementation classes.
+    """Dynamically loads and manages implementation classes for an interface.
+
+    Provides a registry and loading mechanism for extension implementations,
+    supporting two registration methods:
+    1. Direct class reference
+    2. Import path string in the format 'module.submodule:ClassName'
+
+    Extensions are loaded on demand and cached for performance.
     """
 
     def __init__(self, interface: type, impls: Optional[dict[str, Union[str, type]]] = None) -> None:
-        """
-        :param interface: The interface type whose implementations are to be loaded.
-        :param impls: A mapping from name to implementation class
-                    or module path string in the format 'module.submodule:ClassName'.
+        """Initialize an extension loader for a specific interface.
+
+        Args:
+            interface: The interface or abstract base class to load implementations for
+            impls: A mapping of names to implementations, where implementations can be
+                either direct class references or module paths in the format
+                'module.submodule:ClassName'
         """
         self._interface = interface
         self._impls: dict[str, Union[str, type]] = impls or {}
@@ -39,45 +47,77 @@ class ExtensionLoader:
 
     @property
     def interface(self) -> type:
-        """Return the interface type."""
+        """Get the target interface type.
+
+        Returns:
+            The interface or abstract base class this loader manages
+        """
         return self._interface
 
     def register(self, name: str, impl: Union[str, type]) -> None:
-        """
-        Register an extension implementation dynamically.
+        """Register an implementation under a specified name.
 
-        :param name: The name of the implementation.
-        :param impl: The implementation class or a string path to the class.
+        Args:
+            name: Unique identifier for the implementation
+            impl: Either a class object or an import path string in
+                the format 'module.submodule:ClassName'
+
+        Raises:
+            ValueError: If name is empty or not a string
+            TypeError: If impl is not a class or string
+
+        Example:
+            loader.register("myImpl", MyImplementation)
+            loader.register("otherImpl", "mypackage.module:OtherImplementation")
         """
         if not isinstance(name, str) or not name:
             raise ValueError("Implementation name must be a non-empty string.")
         if not (isinstance(impl, str) or isinstance(impl, type)):
             raise TypeError("Implementation must be a class or a string path.")
         self._impls[name] = impl
-        if name in self._cache:
-            del self._cache[name]  # Clear cache
+        self._cache.pop(name, None)  # Clear cached class if exists
 
-    def get_impl(self, name: str) -> type:
+    def list_names(self) -> list[str]:
+        """Get all registered implementation names.
+
+        Returns:
+            List of all implementation identifiers registered with this loader
         """
-        Get the implementation class by name, with caching.
+        return list(self._impls.keys())
 
-        :param name: Implementation name.
-        :return: Implementation class, subclass of the interface.
-        :raises ExtensionError: If the implementation is not found or loading fails.
+    def load_class(self, name: str) -> type:
+        """Load the implementation class for the given name.
+
+        Resolves the implementation, importing it if necessary, and
+        verifies that it properly implements the required interface.
+        Results are cached for subsequent calls.
+
+        Args:
+            name: The name of the registered implementation to load
+
+        Returns:
+            The implementation class
+
+        Raises:
+            ExtensionError: If the implementation doesn't exist, can't be loaded,
+                or doesn't implement the required interface
         """
         if name in self._cache:
             return self._cache[name]
 
         impl = self._impls.get(name)
         if impl is None:
-            raise ExtensionError(f"Extension '{name}' not found for interface '{self._interface.__name__}'")
+            raise ExtensionError(
+                f"No implementation registered under name '{name}' for interface '{self._interface.__name__}'."
+            )
 
         # If it's already a class, validate and return it
         if isinstance(impl, type):
             if not issubclass(impl, self._interface):
                 raise ExtensionError(
-                    f"Registered implementation '{name}' is not a subclass of '{self._interface.__name__}'."
+                    f"Registered class '{impl.__name__}' does not subclass '{self._interface.__name__}'."
                 )
+
             self._cache[name] = impl
             return impl
 
@@ -95,7 +135,7 @@ class ExtensionLoader:
                 module = importlib.import_module(module_name)
                 cls = getattr(module, class_name)
             except (ImportError, AttributeError) as e:
-                raise ExtensionError(f"Failed to import '{impl}' for extension '{name}'.") from e
+                raise ExtensionError(f"Failed to load implementation from path '{impl}'.") from e
 
             if not issubclass(cls, self._interface):
                 raise ExtensionError(
@@ -107,14 +147,23 @@ class ExtensionLoader:
 
         raise ExtensionError(f"Unsupported implementation type for '{name}': {type(impl)}")
 
-    def get_instance(self, name: str, *args, **kwargs) -> Any:
-        """
-        Instantiate the implementation class by name.
+    def create_instance(self, name: str, *args, **kwargs) -> Any:
+        """Create and return an instance of the named implementation.
 
-        :param name: Implementation name.
-        :param args: Positional arguments to instantiate the class.
-        :param kwargs: Keyword arguments to instantiate the class.
-        :return: An instance of the implementation class.
+        Loads the implementation class and instantiates it with the
+        provided arguments.
+
+        Args:
+            name: The name of the registered implementation
+            *args: Positional arguments to pass to the constructor
+            **kwargs: Keyword arguments to pass to the constructor
+
+        Returns:
+            An instance of the implementation class
+
+        Example:
+            # Create an instance with constructor parameters
+            instance = loader.create_instance("myImpl", arg1, arg2, option=True)
         """
-        impl_cls = self.get_impl(name)
-        return impl_cls(*args, **kwargs)
+        cls = self.load_class(name)
+        return cls(*args, **kwargs)

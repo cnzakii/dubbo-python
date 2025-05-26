@@ -16,9 +16,21 @@
 
 from dubbo.__about__ import __version__
 
-DEFAULT_TIMEOUT_VALUE = 10.0  # units: seconds
-
 USER_AGENT = f"dubbo-python/{__version__}".lower()
 
-DEFAULT_WEIGHT = 100
-DEFAULT_WARMUP = 0
+DEVELOPMENT_ENVIRONMENT = "develop"
+TEST_ENVIRONMENT = "test"
+PRODUCTION_ENVIRONMENT = "product"
+
+ENVIRONMENT_VALUES = {
+    DEVELOPMENT_ENVIRONMENT,
+    TEST_ENVIRONMENT,
+    PRODUCTION_ENVIRONMENT,
+}
+
+
+DEFAULT_TIMEOUT_VALUE = 10.0  # units: seconds
+
+
+DEFAULT_WEIGHT_VALUE = 100
+DEFAULT_WARMUP_VALUE = 0

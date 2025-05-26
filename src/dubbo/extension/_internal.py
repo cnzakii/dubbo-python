@@ -13,20 +13,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from dataclasses import dataclass
 from typing import Union
 
 from dubbo.cluster.loadbalance import LoadBalance
 from dubbo.compression import Compressor
+from dubbo.remoting.zookeeper import ZookeeperClient
+from dubbo.remoting.zookeeper.kazoo import AsyncKazooZookeeperClient
 
 
 @dataclass(frozen=True)
 class ExtensionRegistry:
-    """
-    Represents a registry for a specific interface with named implementations.
+    """Registry for a specific interface with named implementations.
 
-    :param interface: The interface type
-    :param impls: A mapping of implementation names to class path strings or classes
+    Maps implementation names to either fully qualified import paths
+    or actual implementation classes for lazy or eager loading.
+
+    Args:
+        interface: The base interface or abstract class to be implemented
+        impls: A mapping of implementation names to either class paths (str)
+            or direct class references
     """
 
     interface: type
@@ -50,11 +57,34 @@ compressorRegistry = ExtensionRegistry(
     },
 )
 
+zkClientRegistry = ExtensionRegistry(
+    interface=ZookeeperClient,
+    impls={
+        "kazoo": "dubbo.remoting.zookeeper.kazoo:KazooZookeeperClient",
+    },
+)
+
+asyncZkClientRegistry = ExtensionRegistry(
+    interface=AsyncKazooZookeeperClient,
+    impls={
+        "kazoo": "dubbo.remoting.zookeeper.kazoo:AsyncKazooZookeeperClient",
+    },
+)
+
 
 def get_all_registries() -> list[ExtensionRegistry]:
-    """
-    Return all ExtensionRegistry instances defined in this module.
-    :return: A list of ExtensionRegistry instances
+    """Collect all ExtensionRegistry instances defined in this module.
+
+    Searches through the global namespace to find all ExtensionRegistry
+    instances, enabling automatic discovery of available extension points.
+
+    Returns:
+        List of all ExtensionRegistry instances in this module.
+
+    Example:
+        registries = get_all_registries()
+        for registry in registries:
+            print(f"Found registry for {registry.interface.__name__}")
     """
     registries = []
     for name, obj in globals().items():

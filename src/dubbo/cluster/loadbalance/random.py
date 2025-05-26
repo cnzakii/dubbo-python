@@ -19,26 +19,24 @@ from typing import Optional
 from dubbo.common import URL
 from dubbo.protocol import Invocation, Invoker
 
-from ._base import LoadBalance, get_weight
+from .base import LoadBalance, get_weight
 
 __all__ = ["RandomLoadBalance"]
 
 
 class RandomLoadBalance(LoadBalance):
-    """
-    RandomLoadBalance implements a random load balancing strategy with optional weights.
+    """Random load balancing with weight support.
 
-    Selection behavior:
-    - If only one invoker is present, return it directly.
-    - If all invokers have equal weights, use uniform random selection.
-    - If weights differ, use weighted random selection: higher weight means higher chance of being selected.
-
-    This is useful in heterogeneous environments where invoker capacity varies:
-    - Set higher weights for powerful nodes.
-    - Set lower weights for slower or limited nodes.
+    Uses weighted random selection where higher weights increase selection
+    probability. Falls back to uniform random when weights are equal.
     """
 
     def select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
+        """Select using weighted random algorithm.
+
+        Returns:
+            Randomly selected invoker based on computed weights.
+        """
         if not invokers:
             return None
         if len(invokers) == 1:

@@ -22,59 +22,69 @@ __all__ = ["Node", "AsyncNode"]
 
 
 class Node(abc.ABC):
+    """Base class for all Dubbo framework nodes.
+
+    A node represents any component in the Dubbo network that has a URL,
+    can be checked for availability, and can be destroyed when no longer needed.
+    """
+
     @abc.abstractmethod
     def get_url(self) -> URL:
-        """
-        Get the URL of the node.
+        """Get the URL associated with this node.
 
-        :return: The URL of the node.
-        :rtype: URL
+        Returns:
+            URL object containing the node's address and parameters.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if the node is available.
+        """Check if this node is currently available.
 
-        :return: True if the node is available, False otherwise.
-        :rtype: bool
+        Returns:
+            True if the node is available for use, False otherwise.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def destroy(self) -> None:
-        """
-        Destroy the node.
+        """Release resources associated with this node.
 
+        Should be called when the node is no longer needed to ensure
+        proper cleanup of resources.
         """
         raise NotImplementedError()
 
 
 class AsyncNode(abc.ABC):
+    """Asynchronous version of the Node interface.
+
+    Similar to Node, but provides asynchronous destroy method for
+    non-blocking resource cleanup in asynchronous contexts.
+    """
+
     @abc.abstractmethod
     def get_url(self) -> URL:
-        """
-        Get the URL of the node.
+        """Get the URL associated with this node.
 
-        :return: The URL of the node.
-        :rtype: URL
+        Returns:
+            URL object containing the node's address and parameters.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if the node is available.
+        """Check if this node is currently available.
 
-        :return: True if the node is available, False otherwise.
-        :rtype: bool
+        Returns:
+            True if the node is available for use, False otherwise.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def destroy(self) -> None:
-        """
-        Asynchronously destroy the node.
+        """Asynchronously release resources associated with this node.
+
+        Allows for non-blocking cleanup operations in asynchronous contexts.
         """
         raise NotImplementedError()

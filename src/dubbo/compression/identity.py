@@ -18,7 +18,7 @@ from dubbo.common.classes import SingletonBase
 from dubbo.common.types import BytesLike
 from dubbo.common.utils import common as common_utils
 
-from ._base import Compressor, Decompressor
+from .base import Compressor, Decompressor
 
 __all__ = ["Identity"]
 

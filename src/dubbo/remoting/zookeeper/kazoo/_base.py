@@ -21,13 +21,22 @@ from anyio import from_thread
 from kazoo.client import KazooClient
 from kazoo.protocol.states import KazooState, WatchedEvent, ZnodeStat
 
+from dubbo.logger import logger
 from dubbo.remoting.zookeeper import ConnectionState, DataEventType
 
+__all__ = [
+    "StateListenerAdapter",
+    "DataListenerAdapter",
+    "ChildrenListenerAdapter",
+    "DataAdapterFactory",
+    "ChildrenAdapterFactory",
+]
 
-class BaseMultiListenerAdapter(abc.ABC):
+
+class BaseListenerAdapter(abc.ABC):
     """
     Base class for multi-listener adapters.
-    Supports both sync and async listener notification.
+    Supports synchronous and asynchronous notifications.
     """
 
     _path: str
@@ -36,28 +45,28 @@ class BaseMultiListenerAdapter(abc.ABC):
 
     def __init__(self, path: str, is_async: bool = False) -> None:
         self._path = path
-        self._listeners = []
+        self._listeners: list[Callable[..., Any]] = []
         self._is_async = is_async
 
     def add(self, listener: Callable[..., Any]) -> None:
         """
         Add a listener to the adapter.
 
-        :param listener: The listener callable.
+        Args:
+            listener: The listener callable.
         """
         if not callable(listener):
             raise TypeError(f"Listener must be callable, got {type(listener).__name__}")
         if self._is_async and not inspect.iscoroutinefunction(listener):
-            raise TypeError(
-                f"Listener must be a coroutine function when is_async is True, got {type(listener).__name__}"
-            )
+            raise TypeError("Async adapter requires coroutine listeners.")
         self._listeners.append(listener)
 
     def remove(self, listener: Callable[..., Any]) -> None:
         """
         Remove a listener from the adapter.
 
-        :param listener: The listener to remove.
+        Args:
+            listener: The listener to remove.
         """
         self._listeners.remove(listener)
 
@@ -67,160 +76,134 @@ class BaseMultiListenerAdapter(abc.ABC):
         """
         self._listeners.clear()
 
-    def notify(self, *args: Any) -> None:
-        """
-        Notify all listeners synchronously.
+    def __call__(self, *args: Any) -> None:
+        """Dispatch notification to all listeners."""
+        if self._is_async:
+            self._notify_async(*args)
+        else:
+            self._notify_sync(*args)
 
-        :param args: Positional arguments.
-        """
-        new_args = self._construct_args(*args)
-        if not self._listeners or new_args is None:
+    def _notify_sync(self, *args: Any) -> None:
+        parsed_args = self._parse_args(*args)
+        if not parsed_args:
             return
-
         for listener in self._listeners:
             try:
-                listener(*new_args)
-            except Exception:  # pragma: nocover
-                pass
+                listener(*parsed_args)
+            except Exception as e:
+                logger.warning("Error in sync listener: %s", e, exc_info=True)
 
-    def notify_async(self, *args: Any) -> None:
-        """
-        Notify all listeners asynchronously using AnyIO.
-
-        :param args: Positional arguments.
-        """
-        new_args = self._construct_args(*args)
-        if not self._listeners or not new_args:
+    def _notify_async(self, *args: Any) -> None:
+        parsed_args = self._parse_args(*args)
+        if not parsed_args:
             return
 
-        async def _do_notify(_listeners, *_args):
-            for listener in _listeners:
+        async def _runner(listeners, *_args):
+            for listener in listeners:
                 try:
                     await listener(*_args)
-                except Exception:  # pragma: nocover
-                    pass
+                except Exception as e:
+                    logger.warning("Error in async listener: %s", e, exc_info=True)
 
-        from_thread.run(_do_notify, self._listeners, *new_args)
-
-    def __call__(self, *args: Any) -> None:
-        """
-        Invoke the notification process.
-        """
-        if self._is_async:
-            self.notify_async(*args)
-        else:
-            self.notify(*args)
+        from_thread.run(_runner, self._listeners, *parsed_args)
 
     @abc.abstractmethod
-    def _construct_args(self, *args: Any) -> Optional[tuple]:
-        """
-        Construct arguments for the listener based on the provided args.
-        :param args: Positional arguments.
-        :return: A tuple of arguments for the listener or None if not applicable.
-        :rtype: Optional[tuple]
-        """
+    def _parse_args(self, *args: Any) -> Optional[tuple]:
+        """Transform input args into listener arguments."""
         raise NotImplementedError()
 
 
-class StateMultiListenerAdapter(BaseMultiListenerAdapter):
-    def _construct_args(self, *args: Any) -> Optional[tuple]:
+class StateListenerAdapter(BaseListenerAdapter):
+    """Adapter for Zookeeper connection state change."""
+
+    def _parse_args(self, *args: Any) -> Optional[tuple]:
         if len(args) != 1 or not isinstance(args[0], KazooState):
+            logger.error("Expected single KazooState, got: %s", args)
             return None
         try:
-            state = ConnectionState(args[0])
-            return (state,)
+            return (ConnectionState(args[0]),)
         except ValueError:
+            logger.error("Unknown connection state: %s", args[0])
             return None
 
 
-class DataMultiListenerAdapter(BaseMultiListenerAdapter):
-    """
-    Listener adapter for Znode data changes.
-    """
+class DataListenerAdapter(BaseListenerAdapter):
+    """Adapter for Znode data change events."""
 
-    def _construct_args(self, *args: Any) -> Optional[tuple]:
-        """
-        Construct arguments for the listener based on the provided args.
-        """
-        if len(args) != 3 or not (
-            isinstance(args[0], bytes) and isinstance(args[1], ZnodeStat) and isinstance(args[2], WatchedEvent)
-        ):
+    def _parse_args(self, *args: Any) -> Optional[tuple]:
+        if len(args) != 3:
+            logger.error("Expected (bytes, ZnodeStat, WatchedEvent), got: %s", args)
             return None
-
         data, stat, event = args
+        if not isinstance(data, bytes) or not isinstance(stat, ZnodeStat) or not isinstance(event, WatchedEvent):
+            logger.error("Invalid data types: %s", args)
+            return None
         try:
-            event_type = DataEventType(event.type)
-            return event.path, data, event_type
+            return event.path, data, DataEventType(event.type)
         except ValueError:
+            logger.error("Unknown event type: %s", event.type)
             return None
 
 
-class ChildrenMultiListenerAdapter(BaseMultiListenerAdapter):
-    """
-    Listener adapter for Znode children changes.
-    """
+class ChildrenListenerAdapter(BaseListenerAdapter):
+    """Adapter for Znode children change events."""
 
-    def _construct_args(self, *args: Any) -> Optional[tuple]:
-        """
-        Construct arguments for the listener based on the provided args.
-        """
+    def _parse_args(self, *args: Any) -> Optional[tuple]:
         if len(args) != 1 or not isinstance(args[0], list):
+            logger.error("Expected single list argument, got: %s", args)
             return None
         return (args[0],)
 
 
-class BaseMultiListenerAdapterFactory(abc.ABC):
+class ListenerAdapterFactory(abc.ABC):
     """
-    Abstract factory for creating and managing listener adapters for specific paths.
+    Factory for managing listener adapters per Znode path.
     """
-
-    __slots__ = ("_client", "_adapters", "_is_async")
 
     _client: KazooClient
-    _adapters: dict[str, BaseMultiListenerAdapter]
+    _adapters: dict[str, BaseListenerAdapter]
     _is_async: bool
 
-    def __init__(self, client: KazooClient, is_async: bool = False) -> None:
+    def __init__(self, client, is_async: bool = False) -> None:
         self._client = client
-        self._adapters = {}
         self._is_async = is_async
+        self._adapters: dict[str, BaseListenerAdapter] = {}
 
-    def add_listener(self, path: str, listener: Any) -> None:
+    def add_listener(self, path: str, listener: Callable[..., Any]) -> None:
         adapter = self._adapters.get(path)
-        if adapter is not None:
-            adapter.add(listener)
-            return
-        adapter = self._adapters.setdefault(path, self._create(path))
+        if not adapter:
+            adapter = self._create_adapter(path)
+            self._adapters[path] = adapter
         adapter.add(listener)
 
-    @abc.abstractmethod
-    def _create(self, path: str) -> BaseMultiListenerAdapter:
-        """Create a new adapter for the given path."""
-        raise NotImplementedError()
-
-    def remove_listener(self, path: str, listener: Any) -> None:
+    def remove_listener(self, path: str, listener: Callable[..., Any]) -> None:
         adapter = self._adapters.get(path)
         if adapter:
             adapter.remove(listener)
 
+    @abc.abstractmethod
+    def _create_adapter(self, path: str) -> BaseListenerAdapter:
+        """Create and attach adapter to client watch."""
+        raise NotImplementedError()
 
-class DataMultiListenerAdapterFactory(BaseMultiListenerAdapterFactory):
+
+class DataAdapterFactory(ListenerAdapterFactory):
     """
-    Factory for `DataMultiListenerAdapter` instances.
+    Factory for managing data change listeners.
     """
 
-    def _create(self, path: str) -> DataMultiListenerAdapter:
-        adapter = DataMultiListenerAdapter(path, self._is_async)
+    def _create_adapter(self, path: str) -> BaseListenerAdapter:
+        adapter = DataListenerAdapter(path, self._is_async)
         self._client.DataWatch(path)(adapter)
         return adapter
 
 
-class ChildrenMultiListenerAdapterFactory(BaseMultiListenerAdapterFactory):
+class ChildrenAdapterFactory(ListenerAdapterFactory):
     """
-    Factory for `ChildrenMultiListenerAdapter` instances.
+    Factory for managing children change listeners.
     """
 
-    def _create(self, path: str) -> ChildrenMultiListenerAdapter:
-        adapter = ChildrenMultiListenerAdapter(path, self._is_async)
+    def _create_adapter(self, path: str) -> BaseListenerAdapter:
+        adapter = ChildrenListenerAdapter(path, self._is_async)
         self._client.ChildrenWatch(path)(adapter)
         return adapter

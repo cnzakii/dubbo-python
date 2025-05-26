@@ -25,11 +25,7 @@ class TestToBytes:
     """
 
     def test_string_conversion(self):
-        """
-        Test converting strings to bytes.
-
-        :return: None
-        """
+        """Test converting strings to bytes."""
         # ASCII string
         assert to_bytes("hello") == b"hello"
 
@@ -44,11 +40,7 @@ class TestToBytes:
         assert to_bytes("café", encoding="latin1") == b"caf\xe9"
 
     def test_bytes_input(self):
-        """
-        Test passing bytes to to_bytes function.
-
-        :return: None
-        """
+        """Test passing bytes to to_bytes function."""
         # Regular bytes
         data = b"hello"
         assert to_bytes(data) is data  # Should return the same object
@@ -60,11 +52,7 @@ class TestToBytes:
         assert to_bytes(data) == b""
 
     def test_bytearray_input(self):
-        """
-        Test converting bytearray to bytes.
-
-        :return: None
-        """
+        """Test converting bytearray to bytes."""
         # Regular bytearray
         data = bytearray(b"hello")
         result = to_bytes(data)
@@ -77,11 +65,7 @@ class TestToBytes:
         assert to_bytes(data) == b""
 
     def test_memoryview_input(self):
-        """
-        Test converting memoryview to bytes.
-
-        :return: None
-        """
+        """Test converting memoryview to bytes."""
         # Regular memoryview
         data = memoryview(b"hello")
         result = to_bytes(data)
@@ -97,11 +81,7 @@ class TestToBytes:
         assert to_bytes(data) == b"hello"
 
     def test_invalid_input(self):
-        """
-        Test handling of invalid input types.
-
-        :return: None
-        """
+        """Test handling of invalid input types."""
         with pytest.raises(TypeError) as excinfo:
             to_bytes(123)
         assert "Expected str, bytes, bytearray, or memoryview" in str(excinfo.value)
@@ -121,11 +101,7 @@ class TestToStr:
     """
 
     def test_string_input(self):
-        """
-        Test passing string to to_str function.
-
-        :return: None
-        """
+        """Test passing string to to_str function."""
         # Regular string
         data = "hello"
         assert to_str(data) is data  # Should return the same object
@@ -142,11 +118,7 @@ class TestToStr:
         assert to_str(data) == ""
 
     def test_bytes_conversion(self):
-        """
-        Test converting bytes to string.
-
-        :return: None
-        """
+        """Test converting bytes to string."""
         # ASCII bytes
         assert to_str(b"hello") == "hello"
 
@@ -162,11 +134,7 @@ class TestToStr:
         assert to_str(latin1_bytes, encoding="latin1") == "café"
 
     def test_bytearray_conversion(self):
-        """
-        Test converting bytearray to string.
-
-        :return: None
-        """
+        """Test converting bytearray to string."""
         # Regular bytearray
         data = bytearray(b"hello")
         assert to_str(data) == "hello"
@@ -180,11 +148,7 @@ class TestToStr:
         assert to_str(data) == "你好"
 
     def test_memoryview_conversion(self):
-        """
-        Test converting memoryview to string.
-
-        :return: None
-        """
+        """Test converting memoryview to string."""
         # Regular memoryview
         data = memoryview(b"hello")
         assert to_str(data) == "hello"
@@ -202,11 +166,7 @@ class TestToStr:
         assert to_str(data) == "hello"
 
     def test_invalid_input(self):
-        """
-        Test handling of invalid input types.
-
-        :return: None
-        """
+        """Test handling of invalid input types."""
         with pytest.raises(TypeError) as excinfo:
             to_str(123)
         assert "Expected str, bytes, bytearray, or memoryview" in str(excinfo.value)
@@ -220,11 +180,7 @@ class TestToStr:
         assert "Expected str, bytes, bytearray, or memoryview" in str(excinfo.value)
 
     def test_encoding_errors(self):
-        """
-        Test handling of encoding errors.
-
-        :return: None
-        """
+        """Test handling of encoding errors."""
         # Invalid UTF-8 bytes
         invalid_utf8 = b"\xff\xfe\xfd"
 

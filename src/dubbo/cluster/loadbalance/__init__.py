@@ -14,6 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._base import LoadBalance
+from .base import LoadBalance
 
 __all__ = ["LoadBalance"]

@@ -18,7 +18,7 @@ from urllib import parse as urlparse
 
 from dubbo.common import constants
 
-from .types import IPAddressType
+from .types import HostLike
 
 __all__ = ["URL", "URLBuilder"]
 
@@ -26,13 +26,14 @@ __all__ = ["URL", "URLBuilder"]
 def _regularize_path(raw: str) -> str:
     """Normalize a URL path to ensure consistent formatting.
 
-    Ensures the path:
-    - Starts with a single '/'
-    - Has no trailing slashes
-    - Returns '/' for empty or root paths
+    Ensures the path starts with a single '/', has no trailing slashes,
+    and returns '/' for empty or root paths.
 
-    :param raw: The raw path string.
-    :return: A normalized path.
+    Args:
+        raw: The raw path string to normalize.
+
+    Returns:
+        A normalized path string.
     """
     path = raw.strip("/")
     return "/" + path if path else "/"
@@ -42,11 +43,14 @@ _BOOL_TRUE = ("true", "1", "yes", "on")
 
 
 class URL:
-    """
-    Represents a Uniform Resource Locator (URL).
+    """Represents a Uniform Resource Locator (URL) for Dubbo services.
 
-    The structure follows:
-        scheme://[username[:password]@]host:port/path?key=value&...
+    Provides methods for working with URLs in the format:
+    scheme://[username[:password]@]host:port/path?key=value&...
+
+    The class handles parameters and custom attributes separately, with
+    parameters being part of the URL string and attributes existing only
+    in memory.
     """
 
     __slots__ = ("_protocol", "_username", "_password", "_host", "_port", "_path", "_params", "_attributes")
@@ -71,16 +75,17 @@ class URL:
         params: dict[str, str],
         attributes: dict[str, Any],
     ):
-        """
-        Initialize a URL object.
-        :param protocol: Protocol (e.g., 'http', 'https')
-        :param username: Username (optional)
-        :param password: Password (optional)
-        :param host: Hostname or IP address
-        :param port: Port number (0 for default)
-        :param path: Path component of the URL
-        :param params: Query parameters as a dictionary
-        :param attributes: User-defined attributes (not part of URL string)
+        """Initialize a URL object with all components.
+
+        Args:
+            protocol: Protocol scheme (e.g., 'dubbo', 'tri')
+            username: Authentication username (optional)
+            password: Authentication password (optional)
+            host: Hostname or IP address
+            port: Port number (0 for default)
+            path: Path component of the URL
+            params: Query parameters as a dictionary
+            attributes: User-defined attributes (not part of URL string)
         """
         self.protocol = protocol
         self.username = username
@@ -121,10 +126,11 @@ class URL:
 
     @property
     def userinfo(self) -> str:
-        """
-        Returns the user info portion of the URL.
+        """Get the user info portion of the URL.
 
-        :return: "username:password" or just "username", or empty if not set.
+        Returns:
+            User credentials in the format "username:password", or just
+            "username" if no password, or empty string if no credentials.
         """
         if self._username:
             return f"{self._username}:{self._password}" if self._password else self._username
@@ -150,10 +156,10 @@ class URL:
 
     @property
     def location(self) -> str:
-        """
-        Returns the host:port combination.
+        """Get the host and port combination.
 
-        :return: Host and port in 'host:port' format.
+        Returns:
+            Host and port as 'host:port' string.
         """
         return f"{self._host}:{self._port}"
 
@@ -169,75 +175,90 @@ class URL:
     # ---------------------- Parameter Methods ----------------------
 
     def add_param(self, key: str, value: str) -> None:
-        """
-        Add or update a query parameter.
+        """Add or update a query parameter.
 
-        :param key: Parameter key
-        :param value: Parameter value
+        Args:
+            key: Parameter key
+            value: Parameter value
         """
         self._params[key] = value
 
     def get_param(self, key: str, default: str = "") -> str:
-        """
-        Retrieve a query parameter value.
+        """Retrieve a query parameter value.
 
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value if present, else default
+        Args:
+            key: Parameter key to retrieve
+            default: Default value if key not found
+
+        Returns:
+            Parameter value if present, else the default value
         """
         return self._params.get(key, default)
 
     def get_param_int(self, key: str, default: int = 0) -> int:
-        """
-        Retrieve a query parameter as an integer.
+        """Retrieve a query parameter as an integer.
 
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as integer, or default if not found.
+        Args:
+            key: Parameter key to retrieve
+            default: Default integer value if key not found or value not convertible
+
+        Returns:
+            Parameter value as integer if present and valid, else default
         """
         value = self.get_param(key)
         return int(value) if value else default
 
     def get_param_float(self, key: str, default: float = 0.0) -> float:
-        """
-        Retrieve a query parameter as a float.
+        """Retrieve a query parameter as a float.
 
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as float, or default if not found.
+        Args:
+            key: Parameter key to retrieve
+            default: Default float value if key not found or value not convertible
+
+        Returns:
+            Parameter value as float if present and valid, else default
         """
         value = self._params.get(key)
         return float(value) if value else default
 
     def get_param_bool(self, key: str, default: bool = False) -> bool:
-        """
-        Retrieve a query parameter as a boolean.
+        """Retrieve a query parameter as a boolean.
 
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as boolean, or default if not found.
+        Treats "true", "1", "yes", and "on" as True values (case-insensitive).
+
+        Args:
+            key: Parameter key to retrieve
+            default: Default boolean value if key not found
+
+        Returns:
+            Parameter value as boolean if present, else default
         """
         value = self._params.get(key)
         return value.lower() in _BOOL_TRUE if value else default
 
     def remove_param(self, key: str) -> None:
-        """
-        Remove a query parameter.
+        """Remove a query parameter if present.
 
-        :param key: Parameter key to remove.
+        Args:
+            key: Parameter key to remove
         """
         self._params.pop(key, None)
 
     def clear_params(self) -> None:
-        """Clear all query parameters."""
+        """Remove all query parameters from this URL."""
         self._params.clear()
 
     def get_raw_parm(self, key: str) -> str:
-        """
-        Get a raw parameter or core URL field based on key.
+        """Get a raw parameter or core URL field based on key.
 
-        :param key: Logical field name
-        :return: Corresponding value as string
+        Special keys like 'protocol', 'host', 'port', etc. return the
+        corresponding URL component. All other keys retrieve from parameters.
+
+        Args:
+            key: Logical field name (protocol, username, password, host, etc.)
+
+        Returns:
+            Corresponding value as string
         """
         if key == constants.PROTOCOL_KEY:
             return self.protocol
@@ -254,49 +275,61 @@ class URL:
         return self.get_param(key)
 
     def get_method_param(self, method: str, key: str, default: str = "") -> str:
-        """
-        Retrieve a method-specific parameter value.
+        """Retrieve a method-specific parameter value.
 
-        :param method: Method name
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value if present, else default
+        Looks for parameters in format "methods.{method_name}.{param_name}".
+
+        Args:
+            method: Method name
+            key: Parameter key
+            default: Default value if key not found
+
+        Returns:
+            Method-specific parameter value if present, else default
         """
         method_key = f"{constants.METHODS_KEY}.{method}.{key}"
         return self.get_param(method_key, default)
 
     def get_method_param_int(self, method: str, key: str, default: int = 0) -> int:
-        """
-        Retrieve a method-specific parameter as an integer.
+        """Retrieve a method-specific parameter as an integer.
 
-        :param method: Method name
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as integer, or default if not found.
+        Args:
+            method: Method name
+            key: Parameter key
+            default: Default value if key not found or not convertible
+
+        Returns:
+            Method parameter as integer if present and valid, else default
         """
         value = self.get_method_param(method, key)
         return int(value) if value else default
 
     def get_method_param_float(self, method: str, key: str, default: float = 0.0) -> float:
-        """
-        Retrieve a method-specific parameter as a float.
+        """Retrieve a method-specific parameter as a float.
 
-        :param method: Method name
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as float, or default if not found.
+        Args:
+            method: Method name
+            key: Parameter key
+            default: Default value if key not found or not convertible
+
+        Returns:
+            Method parameter as float if present and valid, else default
         """
         value = self.get_method_param(method, key)
         return float(value) if value else default
 
     def get_method_param_bool(self, method: str, key: str, default: bool = False) -> bool:
-        """
-        Retrieve a method-specific parameter as a boolean.
+        """Retrieve a method-specific parameter as a boolean.
 
-        :param method: Method name
-        :param key: Parameter key
-        :param default: Default value if key not found
-        :return: Value as boolean, or default if not found.
+        Treats "true", "1", "yes", and "on" as True values (case-insensitive).
+
+        Args:
+            method: Method name
+            key: Parameter key
+            default: Default value if key not found
+
+        Returns:
+            Method parameter as boolean if present, else default
         """
         value = self.get_method_param(method, key)
         return value.lower() in _BOOL_TRUE if value else default
@@ -304,39 +337,45 @@ class URL:
     # ---------------------- Attribute Methods ----------------------
 
     def add_attribute(self, key: str, value: Any) -> None:
-        """
-        Add a user-defined attribute (not part of URL string).
+        """Add a user-defined attribute (not part of URL string).
 
-        :param key: Attribute key
-        :param value: Attribute value
+        Attributes are only stored in memory and not serialized in URL strings.
+
+        Args:
+            key: Attribute key
+            value: Attribute value of any type
         """
         self._attributes[key] = value
 
     def get_attribute(self, key: str, default: Any = None) -> Any:
-        """
-        Get a user-defined attribute.
+        """Get a user-defined attribute.
 
-        :param key: Attribute key
-        :param default: Fallback value if key not found
-        :return: Attribute value or default
+        Args:
+            key: Attribute key
+            default: Value to return if key not found
+
+        Returns:
+            Attribute value if present, else default
         """
         return self._attributes.get(key, default)
 
     def remove_attribute(self, key: str) -> None:
-        """Remove a custom attribute."""
+        """Remove a user-defined attribute if present."""
         self._attributes.pop(key, None)
 
     def clear_attributes(self) -> None:
-        """Remove all user-defined attributes."""
+        """Remove all user-defined attributes from this URL."""
         self._attributes.clear()
 
     # ---------------------- Serialization Methods ----------------------
 
     def to_dict(self) -> dict[str, str]:
-        """
-        Convert the URL object to a dictionary (excluding attributes).
+        """Convert the URL object to a dictionary.
 
-        :return: Dictionary representation of the URL.
+        Note that user-defined attributes are not included in the result.
+
+        Returns:
+            Dictionary with URL components and parameters
         """
         return {
             constants.PROTOCOL_KEY: self.protocol,
@@ -349,11 +388,13 @@ class URL:
         }
 
     def to_str(self, encode: bool = False) -> str:
-        """
-        Convert the URL to a string representation.
+        """Convert the URL to its string representation.
 
-        :param encode: Whether to percent-encode the entire URL.
-        :return: Full URL string.
+        Args:
+            encode: Whether to percent-encode the URL. Defaults to False.
+
+        Returns:
+            Complete URL string
         """
         netloc = f"{self.userinfo}@{self.location}" if self.username else self.location
         query = urlparse.urlencode(self._params, encoding=constants.UTF_8)
@@ -361,10 +402,10 @@ class URL:
         return urlparse.quote(url, encoding=constants.UTF_8) if encode else url
 
     def copy(self) -> "URL":
-        """
-        Deep copy of the current URL object.
+        """Create a deep copy of the current URL object.
 
-        :return: New URL instance with same data.
+        Returns:
+            New URL instance with same data but independent dictionaries
         """
         return URL(
             protocol=self.protocol,
@@ -385,12 +426,17 @@ class URL:
 
     @staticmethod
     def from_str(url_str: str, decode: bool = False) -> "URL":
-        """
-        Create a URL instance from a string.
+        """Create a URL instance by parsing a string.
 
-        :param url_str: URL string to parse.
-        :param decode: Whether to decode percent-encoded characters.
-        :return: URL object.
+        Args:
+            url_str: URL string to parse
+            decode: Whether to decode percent-encoded characters. Defaults to False.
+
+        Returns:
+            New URL instance
+
+        Example:
+            url = URL.from_str("dubbo://localhost:20880/com.example.Service")
         """
         if decode:
             url_str = urlparse.unquote(url_str, encoding=constants.UTF_8)
@@ -409,8 +455,14 @@ class URL:
 
 
 class URLBuilder:
-    """
-    A builder for constructing URL instances using a fluent API.
+    """Builder for constructing URL instances using a fluent API.
+
+    Provides method chaining to set URL components one at a time before
+    building the final URL object.
+
+    Example:
+        url = URLBuilder().protocol("dubbo").host("localhost").port(20880)\\
+              .path("/com.example.Service").build()
     """
 
     __slots__ = ("_protocol", "_username", "_password", "_host", "_port", "_path", "_params", "_attributes")
@@ -435,38 +487,109 @@ class URLBuilder:
         self._attributes = {}
 
     def protocol(self, value: str) -> "URLBuilder":
+        """Set the protocol/scheme component.
+
+        Args:
+            value: Protocol value (e.g., 'dubbo', 'tri')
+
+        Returns:
+            Self for method chaining
+        """
         self._protocol = value
         return self
 
     def username(self, value: str) -> "URLBuilder":
+        """Set the username for authentication.
+
+        Args:
+            value: Username string
+
+        Returns:
+            Self for method chaining
+        """
         self._username = value
         return self
 
     def password(self, value: str) -> "URLBuilder":
+        """Set the password for authentication.
+
+        Args:
+            value: Password string
+
+        Returns:
+            Self for method chaining
+        """
         self._password = value
         return self
 
-    def host(self, value: IPAddressType) -> "URLBuilder":
+    def host(self, value: HostLike) -> "URLBuilder":
+        """Set the host component.
+
+        Args:
+            value: Host name or IP address
+
+        Returns:
+            Self for method chaining
+        """
         self._host = str(value)
         return self
 
     def port(self, value: int) -> "URLBuilder":
+        """Set the port number.
+
+        Args:
+            value: Port number (use 0 for default)
+
+        Returns:
+            Self for method chaining
+        """
         self._port = value
         return self
 
     def path(self, value: str) -> "URLBuilder":
+        """Set the path component.
+
+        Args:
+            value: URL path string (will be normalized)
+
+        Returns:
+            Self for method chaining
+        """
         self._path = value
         return self
 
     def param(self, key: str, value: Any) -> "URLBuilder":
+        """Add a query parameter.
+
+        Args:
+            key: Parameter name
+            value: Parameter value (will be converted to string)
+
+        Returns:
+            Self for method chaining
+        """
         self._params[key] = str(value)
         return self
 
     def attribute(self, key: str, value: Any) -> "URLBuilder":
+        """Add a user-defined attribute (not part of URL string).
+
+        Args:
+            key: Attribute name
+            value: Attribute value (any type)
+
+        Returns:
+            Self for method chaining
+        """
         self._attributes[key] = value
         return self
 
     def build(self) -> URL:
+        """Create and return the final URL object.
+
+        Returns:
+            New URL instance with all configured components
+        """
         return URL(
             protocol=self._protocol,
             username=self._username,

@@ -20,23 +20,21 @@ __all__ = ["to_bytes", "to_str"]
 
 
 def to_bytes(data: StrOrBytes, encoding=constants.UTF_8) -> bytes:
-    """
-    Convert various data types to bytes.
+    """Convert various data types to bytes.
 
-    :param data: Input value to convert to bytes
-    :type data: str or bytes or bytearray or memoryview
-    :param encoding: Encoding to use for string conversion (default: UTF-8)
-    :type encoding: str
-    :returns: Bytes representation of the input
-    :rtype: bytes
-    :raises TypeError: If input is not str, bytes, bytearray, or memoryview
+    Args:
+        data: Input value to convert (str, bytes, bytearray, or memoryview).
+        encoding: Character encoding for string conversion. Defaults to UTF-8.
 
-    Converts the input data to bytes using the following rules:
+    Returns:
+        Bytes representation of the input data.
 
-    * str: encoded using specified encoding
-    * bytes: returned as-is
-    * bytearray: converted to bytes
-    * memoryview: converted to bytes
+    Raises:
+        TypeError: If input type is not supported.
+
+    Example:
+        result = to_bytes("hello")
+        result = to_bytes(bytearray(b"data"))
     """
     if isinstance(data, str):
         return data.encode(encoding)
@@ -51,25 +49,23 @@ def to_bytes(data: StrOrBytes, encoding=constants.UTF_8) -> bytes:
 
 
 def to_str(data: StrOrBytes, encoding=constants.UTF_8, errors="strict") -> str:
-    """
-    Convert various data types to string.
+    """Convert various data types to string.
 
-    :param data: Input value to convert to string
-    :type data: str or bytes or bytearray or memoryview
-    :param encoding: Encoding to use for bytes conversion (default: UTF-8)
-    :type encoding: str
-    :param errors: How to handle encoding errors (default: 'strict')
-                   Other options include 'ignore', 'replace', etc.
-    :type errors: str
-    :returns: String representation of the input
-    :rtype: str
-    :raises TypeError: If input is not str, bytes, bytearray, or memoryview
-    :raises UnicodeDecodeError: If decoding fails and errors='strict'
+    Args:
+        data: Input value to convert (str, bytes, bytearray, or memoryview).
+        encoding: Character encoding for bytes decoding. Defaults to UTF-8.
+        errors: Error handling strategy for decoding failures. Defaults to 'strict'.
 
-    Converts the input data to string using the following rules:
+    Returns:
+        String representation of the input data.
 
-    * str: returned as-is
-    * bytes, bytearray, memoryview: decoded using specified encoding
+    Raises:
+        TypeError: If input type is not supported.
+        UnicodeDecodeError: If decoding fails with errors='strict'.
+
+    Example:
+        result = to_str(b"hello")
+        result = to_str(bytearray(b"data"), errors="ignore")
     """
     if isinstance(data, str):
         return data

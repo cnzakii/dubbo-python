@@ -29,8 +29,8 @@ class TestCompressionBase:
         """
         Returns sample test data for compression tests.
 
-        :return: Sample data in different formats
-        :rtype: dict
+        Returns:
+            Sample data in different formats.
         """
         return {
             "str": "Hello World",
@@ -44,8 +44,9 @@ class TestCompressionBase:
         """
         Test that compressing and then decompressing recovers the original data.
 
-        :param compressor: Compressor/decompressor instance
-        :param test_data: Dictionary of test data
+        Args:
+            compressor: Compressor/decompressor instance.
+            test_data: Dictionary of test data.
         """
         for data_name, data in test_data.items():
             compressed = compressor.compress(data)
@@ -70,8 +71,8 @@ class TestIdentity(TestCompressionBase):
         """
         Returns an Identity compressor instance.
 
-        :return: Identity compressor
-        :rtype: Identity
+        Returns:
+            Identity compressor.
         """
         return Identity()
 
@@ -79,7 +80,8 @@ class TestIdentity(TestCompressionBase):
         """
         Test that the encoding method returns the correct value.
 
-        :param compressor: Identity compressor instance
+        Args:
+            compressor: Identity compressor instance.
         """
         assert compressor.encoding() == "identity"
         assert Identity.encoding() == "identity"
@@ -94,8 +96,9 @@ class TestIdentity(TestCompressionBase):
         """
         Test compression and decompression with Identity.
 
-        :param compressor: Identity compressor instance
-        :param test_data: Dictionary of test data
+        Args:
+            compressor: Identity compressor instance
+            test_data: Dictionary of test data.
         """
         self._test_compress_decompress(compressor, test_data)
 
@@ -103,8 +106,9 @@ class TestIdentity(TestCompressionBase):
         """
         Test that Identity compression doesn't actually change the data.
 
-        :param compressor: Identity compressor instance
-        :param test_data: Dictionary of test data
+        Args:
+            compressor: Identity compressor instance
+            test_data: Dictionary of test data.
         """
         for data_name, data in test_data.items():
             expected = data.encode("utf-8") if isinstance(data, str) else bytes(data)
@@ -120,8 +124,8 @@ class TestGzip(TestCompressionBase):
         """
         Returns a Gzip compressor instance.
 
-        :return: Gzip compressor
-        :rtype: Gzip
+        Returns:
+            Gzip compressor.
         """
         return Gzip()
 
@@ -129,7 +133,8 @@ class TestGzip(TestCompressionBase):
         """
         Test that the encoding method returns the correct value.
 
-        :param compressor: Gzip compressor instance
+        Args:
+            compressor: Gzip compressor instance.
         """
         assert compressor.encoding() == "gzip"
         assert Gzip.encoding() == "gzip"
@@ -144,8 +149,9 @@ class TestGzip(TestCompressionBase):
         """
         Test compression and decompression with Gzip.
 
-        :param compressor: Gzip compressor instance
-        :param test_data: Dictionary of test data
+        Args:
+            compressor: Gzip compressor instance.
+            test_data: Dictionary of test data.
         """
         self._test_compress_decompress(compressor, test_data)
 
@@ -153,7 +159,8 @@ class TestGzip(TestCompressionBase):
         """
         Test that Gzip actually compresses data with repeating content.
 
-        :param compressor: Gzip compressor instance
+        Args:
+            compressor: Gzip compressor instance.
         """
         data = b"a" * 1000  # Highly compressible data
         compressed = compressor.compress(data)
@@ -169,8 +176,8 @@ class TestBzip2(TestCompressionBase):
         """
         Returns a Bzip2 compressor instance.
 
-        :return: Bzip2 compressor
-        :rtype: Bzip2
+        Returns:
+            Bzip2 compressor.
         """
         return Bzip2()
 
@@ -178,7 +185,8 @@ class TestBzip2(TestCompressionBase):
         """
         Test that the encoding method returns the correct value.
 
-        :param compressor: Bzip2 compressor instance
+        Args:
+            compressor: Bzip2 compressor instance.
         """
         assert compressor.encoding() == "bzip2"
         assert Bzip2.encoding() == "bzip2"
@@ -193,8 +201,9 @@ class TestBzip2(TestCompressionBase):
         """
         Test compression and decompression with Bzip2.
 
-        :param compressor: Bzip2 compressor instance
-        :param test_data: Dictionary of test data
+        Args:
+            compressor: Bzip2 compressor instance
+            test_data: Dictionary of test data.
         """
         self._test_compress_decompress(compressor, test_data)
 
@@ -202,7 +211,8 @@ class TestBzip2(TestCompressionBase):
         """
         Test that Bzip2 actually compresses data with repeating content.
 
-        :param compressor: Bzip2 compressor instance
+        Args:
+            compressor: Bzip2 compressor instance.
         """
         data = b"a" * 1000  # Highly compressible data
         compressed = compressor.compress(data)

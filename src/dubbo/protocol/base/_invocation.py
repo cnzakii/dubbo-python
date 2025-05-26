@@ -15,17 +15,16 @@
 # limitations under the License.
 import abc
 import typing
-from typing import Any
+from typing import Any, Union
 
 if typing.TYPE_CHECKING:
-    from ._invoker import Invoker
+    from ._invoker import AsyncInvoker, Invoker
 
 __all__ = ["Invocation"]
 
 
 class Invocation(abc.ABC):
-    """
-    Represents an invocation of a remote method.
+    """Represents an invocation of a remote method.
 
     This interface provides access to method name, service name, arguments,
     attachments, attributes, and the invoker involved in the current invocation context.
@@ -37,113 +36,117 @@ class Invocation(abc.ABC):
     @property
     @abc.abstractmethod
     def method_name(self) -> str:
-        """
-        Get the name of the method being invoked.
+        """Gets the name of the method being invoked.
 
-        :return: The invocation method name.
+        Returns:
+            str: The invocation method name.
         """
         raise NotImplementedError()
 
     @property
     @abc.abstractmethod
     def service_name(self) -> str:
-        """
-        Get the name of the service interface.
+        """Gets the name of the service interface.
 
-        :return: The service interface name.
+        Returns:
+            str: The service interface name.
         """
         raise NotImplementedError()
 
     @property
     @abc.abstractmethod
-    def invoker(self) -> "Invoker":
-        """
-        Get the invoker associated with this invocation.
+    def invoker(self) -> Union["Invoker", "AsyncInvoker"]:
+        """Gets the invoker associated with this invocation.
 
-        :return: The Invoker instance.
+        Returns:
+            Union[Invoker, AsyncInvoker]: The invoker instance.
         """
         raise NotImplementedError()
 
     @invoker.setter
     @abc.abstractmethod
-    def invoker(self, invoker: "Invoker") -> None:
-        """
-        Set the invoker for this invocation.
+    def invoker(self, invoker: Union["Invoker", "AsyncInvoker"]) -> None:
+        """Sets the invoker for this invocation.
 
-        :param invoker: The Invoker instance.
+        Args:
+            invoker: The invoker instance to be associated with this invocation.
         """
         raise NotImplementedError()
 
     @property
     @abc.abstractmethod
     def arguments(self) -> list[Any]:
-        """
-        Get the argument list passed to the method invocation.
+        """Gets the argument list passed to the method invocation.
 
-        :return: A list of arguments.
+        Returns:
+            list[Any]: A list of arguments.
         """
         raise NotImplementedError()
 
     @property
     @abc.abstractmethod
     def attachments(self) -> dict[str, Any]:
-        """
-        Get the attachments (metadata) associated with this invocation.
+        """Gets the attachments (metadata) associated with this invocation.
 
-        :return: A dictionary of attachment key-value pairs.
+        Returns:
+            dict[str, Any]: A dictionary of attachment key-value pairs.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def get_attachment(self, key: str, default: Any = None) -> Any:
-        """
-        Retrieve an attachment value by key.
+        """Retrieves an attachment value by key.
 
-        :param key: The key to look up.
-        :param default: The default value if the key is missing.
-        :return: The attachment value or default.
+        Args:
+            key: The key to look up.
+            default: The default value if the key is missing.
+
+        Returns:
+            Any: The attachment value or default.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def set_attachment(self, key: str, value: Any) -> None:
-        """
-        Set or update an attachment key-value pair.
+        """Sets or updates an attachment key-value pair.
 
-        :param key: The key to set.
-        :param value: The value to set.
+        Args:
+            key: The key to set.
+            value: The value to set.
         """
         raise NotImplementedError()
 
     @property
     @abc.abstractmethod
     def attributes(self) -> dict[str, Any]:
-        """
-        Get internal attributes related to this invocation.
+        """Gets internal attributes related to this invocation.
 
         Attributes are used internally and not transferred between client and server.
 
-        :return: A dictionary of attribute key-value pairs.
+        Returns:
+            dict[str, Any]: A dictionary of attribute key-value pairs.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def get_attribute(self, key: str, default: Any = None) -> Any:
-        """
-        Retrieve an attribute value by key.
+        """Retrieves an attribute value by key.
 
-        :param key: The key to look up.
-        :param default: The default value if the key is missing.
-        :return: The attribute value or default.
+        Args:
+            key: The key to look up.
+            default: The default value if the key is missing.
+
+        Returns:
+            Any: The attribute value or default.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def set_attribute(self, key: str, value: Any) -> None:
-        """
-        Set or update an attribute key-value pair.
+        """Sets or updates an attribute key-value pair.
 
-        :param key: The key to set.
-        :param value: The value to set.
+        Args:
+            key: The key to set.
+            value: The value to set.
         """
         raise NotImplementedError()

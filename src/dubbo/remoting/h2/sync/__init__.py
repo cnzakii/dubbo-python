@@ -13,3 +13,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from ._connection import SyncHttp2Connection
+from ._stream import SyncHttp2Stream
+from ._transport import SyncHttp2Client, SyncHttp2Server, SyncHttp2Transport
+
+__all__ = [
+    "SyncHttp2Client",
+    "SyncHttp2Server",
+    "SyncHttp2Transport",
+    "SyncHttp2Connection",
+    "SyncHttp2Stream",
+]

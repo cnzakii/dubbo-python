@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import abc
 
 from dubbo.common.types import BytesLike
@@ -22,50 +21,58 @@ __all__ = ["MessageEncoding", "Compressor", "Decompressor"]
 
 
 class MessageEncoding(abc.ABC):
-    """
-    The message encoding interface.
+    """Base interface for message encoding identification.
+
+    Defines the contract for objects that need to identify
+    their encoding type (compression algorithm).
     """
 
     @classmethod
     @abc.abstractmethod
     def encoding(cls) -> str:
-        """
-        Get message encoding of current compression
-        :return: The message encoding.
-        :rtype: str
+        """Get the encoding identifier for this compression type.
+
+        Returns:
+            A string identifying the encoding algorithm.
         """
         raise NotImplementedError()
 
 
 class Compressor(MessageEncoding, abc.ABC):
-    """
-    The compression interface.
+    """Interface for data compression operations.
+
+    Implementers must provide a method to compress data and
+    identify the encoding algorithm used.
     """
 
     @abc.abstractmethod
     def compress(self, data: BytesLike) -> bytes:
-        """
-        Compress the data.
-        :param data: The data to compress.
-        :type data: BytesLike
-        :return: The compressed data.
-        :rtype: bytes
+        """Compress the provided data.
+
+        Args:
+            data: Raw data to compress (bytes, bytearray, or memoryview).
+
+        Returns:
+            Compressed data as bytes.
         """
         raise NotImplementedError()
 
 
 class Decompressor(MessageEncoding, abc.ABC):
-    """
-    The decompressor interface.
+    """Interface for data decompression operations.
+
+    Implementers must provide a method to decompress data and
+    identify the encoding algorithm used.
     """
 
     @abc.abstractmethod
     def decompress(self, data: BytesLike) -> bytes:
-        """
-        Decompress the data.
-        :param data: The data to decompress.
-        :type data: bytes
-        :return: The decompressed data.
-        :rtype: bytes
+        """Decompress the provided data.
+
+        Args:
+            data: Compressed data to decompress (bytes, bytearray, or memoryview).
+
+        Returns:
+            Original uncompressed data as bytes.
         """
         raise NotImplementedError()
