@@ -15,22 +15,22 @@
 # limitations under the License.
 import enum
 
-from .grpc.constants import MetadataKeys
+from .grpc.constants import MetadataName
 
 
-class TriMetadataKeys(enum.StrEnum):
+class TriMetadataName(enum.StrEnum):
     """
     Metadata keys used in Triple protocol,
     which is based on gRPC with Dubbo-specific extensions.
     """
 
     # === Standard gRPC metadata keys (inherited from gRPC) ===
-    GRPC_TIMEOUT = MetadataKeys.TIMEOUT
-    GRPC_ENCODING = MetadataKeys.ENCODING
-    GRPC_ACCEPT_ENCODING = MetadataKeys.ACCEPT_ENCODING
-    GRPC_STATUS = MetadataKeys.STATUS
-    GRPC_MESSAGE = MetadataKeys.MESSAGE
-    GRPC_STATUS_DETAILS_BIN = MetadataKeys.STATUS_DETAILS_BIN
+    GRPC_TIMEOUT = MetadataName.TIMEOUT
+    GRPC_ENCODING = MetadataName.ENCODING
+    GRPC_ACCEPT_ENCODING = MetadataName.ACCEPT_ENCODING
+    GRPC_STATUS = MetadataName.STATUS
+    GRPC_MESSAGE = MetadataName.MESSAGE
+    GRPC_STATUS_DETAILS_BIN = MetadataName.STATUS_DETAILS_BIN
 
     # === Triple-specific metadata keys ===
     CONSUMER_APP_NAME = "tri-consumer-appname"

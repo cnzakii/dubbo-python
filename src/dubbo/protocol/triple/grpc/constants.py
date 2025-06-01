@@ -16,14 +16,14 @@
 import enum
 from http import HTTPStatus
 
-__all__ = ["MetadataKeys", "StatusCode", "HTTP_CODE_TO_GRPC_STATUS", "H2_ERROR_TO_GRPC_STATUS"]
+__all__ = ["MetadataName", "StatusCode", "HTTP_CODE_TO_GRPC_STATUS", "H2_ERROR_TO_GRPC_STATUS"]
 
 from typing import Optional, Union
 
 from dubbo.remoting.h2 import Http2ErrorCode
 
 
-class MetadataKeys(enum.StrEnum):
+class MetadataName(enum.StrEnum):
     """
     Standard gRPC metadata keys used in HTTP/2 requests and responses.
 

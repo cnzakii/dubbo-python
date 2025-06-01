@@ -40,6 +40,13 @@ class SyncHttp2Client(Http2Client, SyncHttp2Connection):
     def __init__(self, net_stream: NetworkStream):
         super().__init__(net_stream, H2Configuration(client_side=True, validate_inbound_headers=False))
 
+    def __enter__(self) -> "SyncHttp2Client":
+        SyncHttp2Connection.__enter__(self)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        SyncHttp2Connection.__exit__(self, exc_type, exc_value, traceback)
+
 
 class SyncHttp2Server(Http2Server):
     __slots__ = ("_server", "_connection_handler", "_stream_handler")
@@ -103,8 +110,9 @@ class SyncHttp2Transport(Http2Transport):
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
         net_stream = self._backend.connect_tcp(url.host, url.port, timeout=timeout)
+        client = SyncHttp2Client(net_stream)
         logger.info("HTTP/2 connection established to %s", net_stream.get_extra_info("remote_address"))
-        return SyncHttp2Client(net_stream)
+        return client
 
     def bind(self, url: URL) -> Http2Server:
         """Bind to the given URL and return an HTTP/2 server connection."""

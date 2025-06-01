@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._base import BaseConfig
+from ._transport import AioHttp2Transport
 
-
-class ServiceConfig(BaseConfig):
-    pass
+__all__ = ["AioHttp2Transport"]

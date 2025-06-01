@@ -181,7 +181,9 @@ _PRESERVE_KEYS = [
 ]
 
 
-def encode_custom_metadata(metadata: Union[Mapping[str, Any], Collection[tuple[str, Any]]]) -> list[tuple[str, str]]:
+def encode_custom_metadata(
+    metadata: Union[Mapping[str, Any], Collection[tuple[str, Any]]], lowercase_keys: bool = True
+) -> list[tuple[str, str]]:
     """Encodes custom metadata for gRPC headers.
 
     Ensures metadata keys and values are safe for use in gRPC headers,
@@ -189,6 +191,7 @@ def encode_custom_metadata(metadata: Union[Mapping[str, Any], Collection[tuple[s
 
     Args:
         metadata: The metadata dictionary or collection of key-value pairs to encode.
+        lowercase_keys: Whether to convert metadata keys to lowercase (recommended by gRPC spec).
 
     Returns:
         list[tuple[str, str]]: The encoded metadata as a list of key-value tuples.
@@ -202,13 +205,11 @@ def encode_custom_metadata(metadata: Union[Mapping[str, Any], Collection[tuple[s
 
     encoded_metadata = []
     for item in metadata:
-        k = item[0]
+        k = item[0].lower() if lowercase_keys else item[0]
         v = item[1]
         if k.startswith(":") or k.startswith("grpc-") or k in _PRESERVE_KEYS:
-            # Skip special keys
             raise KeyError(f"Invalid metadata key: {k}")
         elif k.endswith("-bin"):
-            # Encode binary values
             if not isinstance(v, bytes):
                 raise TypeError(f"Invalid metadata value type, bytes expected: {v}")
             encoded_metadata.append((k, encode_bin_value(v)))

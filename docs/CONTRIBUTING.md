@@ -220,12 +220,12 @@ For more details, refer to https://hatch.pypa.io/latest/publish/
 
 > Reference: [Publishing package distribution releases using GitHub Actions CI/CD workflows](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/)
 
-##### Prerequisites: Configuring Trusted Publishing
+**Prerequisites: Configuring Trusted Publishing**
 
 Follow the **[Configuring Trusted Publishing](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/#configuring-trusted-publishing)** section of the official guide to ensure that only manually approved workflow runs are permitted to publish to PyPI.
 
 **NOTE**: For security reasons, you must require [manual approval](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules) on each run for the `pypi` environment.
 
-##### Trigger Conditions
+**Trigger Conditions**
 
-The `publish` workflow is triggered whenever a new Release is created in the GitHub repository. It will build the source code corresponding to that Release, upload the resulting artifacts, and then publish the package to PyPI.
+The `publish` workflow is triggered whenever a new Release is published in the GitHub repository. It will build the source code corresponding to that Release, upload the resulting artifacts, and then publish the package to PyPI.

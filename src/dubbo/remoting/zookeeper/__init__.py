@@ -15,27 +15,31 @@
 # limitations under the License.
 
 from .base import (
-    AsyncChildrenListener,
-    AsyncDataListener,
-    AsyncStateListener,
+    AsyncChildrenListenerType,
+    AsyncDataListenerType,
+    AsyncStateListenerType,
     AsyncZookeeperClient,
-    ChildrenListener,
+    AsyncZookeeperTransport,
+    ChildrenListenerType,
     ConnectionState,
     DataEventType,
-    DataListener,
-    StateListener,
+    DataListenerType,
+    StateListenerType,
     ZookeeperClient,
+    ZookeeperTransport,
 )
 
 __all__ = [
-    "AsyncChildrenListener",
-    "AsyncDataListener",
-    "AsyncStateListener",
+    "AsyncChildrenListenerType",
+    "AsyncDataListenerType",
+    "AsyncStateListenerType",
     "AsyncZookeeperClient",
-    "ChildrenListener",
+    "ChildrenListenerType",
     "ConnectionState",
     "DataEventType",
-    "DataListener",
-    "StateListener",
+    "DataListenerType",
+    "StateListenerType",
     "ZookeeperClient",
+    "ZookeeperTransport",
+    "AsyncZookeeperTransport",
 ]

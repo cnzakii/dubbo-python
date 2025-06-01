@@ -52,8 +52,8 @@ __all__ = [
     "AnyIOBackend",
 ]
 
-_ItemT = TypeVar("_ItemT", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
-_DatagramHandlerT = Callable[[AsyncNetworkStream[_ItemT], _ItemT], Awaitable[None]]
+_T_Item = TypeVar("_T_Item", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
+_T_DatagramHandler = Callable[[AsyncNetworkStream[_T_Item], _T_Item], Awaitable[None]]
 
 
 class AnyIOStream(AsyncNetworkStream[bytes]):
@@ -104,7 +104,7 @@ class AnyIOStream(AsyncNetworkStream[bytes]):
             return None
 
 
-class AnyIODatagramStream(AsyncNetworkStream[_ItemT], Generic[_ItemT]):
+class AnyIODatagramStream(AsyncNetworkStream[_T_Item], Generic[_T_Item]):
     """Asynchronous datagram stream using AnyIO UnreliableObjectStream.
 
     Handles UDP and Unix datagram packet transmission.
@@ -112,13 +112,13 @@ class AnyIODatagramStream(AsyncNetworkStream[_ItemT], Generic[_ItemT]):
 
     __slots__ = ("_stream",)
 
-    _stream: anyio_abc.UnreliableObjectStream[_ItemT]
+    _stream: anyio_abc.UnreliableObjectStream[_T_Item]
 
-    def __init__(self, stream: anyio_abc.UnreliableObjectStream[_ItemT]) -> None:
+    def __init__(self, stream: anyio_abc.UnreliableObjectStream[_T_Item]) -> None:
         """Initialize with AnyIO UnreliableObjectStream."""
         self._stream = stream
 
-    async def send(self, item: _ItemT) -> None:
+    async def send(self, item: _T_Item) -> None:
         """Send datagram item asynchronously."""
         exc_map: ExceptionMapping = {
             anyio.BrokenResourceError: SendError,
@@ -127,7 +127,7 @@ class AnyIODatagramStream(AsyncNetworkStream[_ItemT], Generic[_ItemT]):
         with map_exceptions(exc_map):
             await self._stream.send(item)
 
-    async def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES) -> _ItemT:
+    async def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES) -> _T_Item:
         """Receive datagram item asynchronously.
 
         Note: max_bytes parameter is ignored for AnyIO UnreliableObjectStream.
@@ -191,18 +191,20 @@ class AnyIOStreamServer(AsyncNetworkServer[AsyncNetworkStream[bytes], AsyncStrea
         await self._listener.aclose()
 
 
-class AnyIODatagramServer(AsyncNetworkServer[AsyncNetworkStream[_ItemT], _DatagramHandlerT[_ItemT]], Generic[_ItemT]):
+class AnyIODatagramServer(
+    AsyncNetworkServer[AsyncNetworkStream[_T_Item], _T_DatagramHandler[_T_Item]], Generic[_T_Item]
+):
     """Asynchronous datagram server using AnyIO with concurrent connection handling."""
 
     __slots__ = ("_stream",)
 
-    _stream: AnyIODatagramStream[_ItemT]
+    _stream: AnyIODatagramStream[_T_Item]
 
-    def __init__(self, stream: anyio_abc.UnreliableObjectStream[_ItemT]) -> None:
+    def __init__(self, stream: anyio_abc.UnreliableObjectStream[_T_Item]) -> None:
         """Initialize with AnyIO UnreliableObjectStream."""
-        self._stream: AnyIODatagramStream[_ItemT] = AnyIODatagramStream(stream)
+        self._stream: AnyIODatagramStream[_T_Item] = AnyIODatagramStream(stream)
 
-    async def serve(self, handler: _DatagramHandlerT[_ItemT]) -> None:
+    async def serve(self, handler: _T_DatagramHandler[_T_Item]) -> None:
         """Start serving with concurrent handler execution for each datagram."""
         async with AsyncExitStack() as stack:
             task_group = await stack.enter_async_context(anyio.create_task_group())

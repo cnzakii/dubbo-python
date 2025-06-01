@@ -13,6 +13,7 @@ NOTICE
 .pre-commit-config.yaml
 .python-version
 uv.lock
+py.typed
 
 
 # directories

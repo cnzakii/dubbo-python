@@ -13,9 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import abc
 from collections.abc import Awaitable
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from typing import Callable, Optional, TypeVar, Union
 
 import anyio
@@ -27,8 +27,6 @@ from h2.connection import H2Connection
 from dubbo.common.types import BytesLike
 from dubbo.common.utils import common as common_utils
 from dubbo.logger import logger
-from dubbo.remoting.backend import AsyncNetworkStream
-from dubbo.remoting.backend.exceptions import ReceiveError, SendError
 from dubbo.remoting.h2 import (
     AsyncHttp2Connection,
     AsyncHttp2Stream,
@@ -50,47 +48,24 @@ from ._managers import CallbackManager, StreamManager
 from ._stream import AnyIOHttp2Stream
 from ._tracker import AsyncSendTracker, dummy_tracker
 
-__all__ = ["AnyIOHttp2Connection"]
+__all__ = ["BaseHttp2Connection"]
+
+from ...backend.exceptions import ConnectError
 
 _EventT = TypeVar("_EventT", bound=h2_events.Event)
 _EventDispatcher = dict[type[_EventT], Callable[[_EventT], Awaitable[None]]]
 
 
-class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
-    """Asynchronous HTTP/2 connection handler based on AnyIO.
-
-    This class implements the HTTP/2 protocol (RFC 7540) using anyio for asynchronous I/O.
-    It handles HTTP/2 framing, data sending/receiving, ping management, settings negotiation,
-    and stream lifecycle management in a fully async fashion.
-
-    The connection maintains separate task groups for sending and receiving data,
-    and properly handles protocol events like SETTINGS, PING, and GOAWAY frames.
-    """
-
-    __slots__ = (
-        "_tg",
-        "_h2_core",
-        "_net_stream",
-        "_stream_manager",
-        "_ping_manager",
-        "_settings_manager",
-        "_send_buffer",
-        "_event_dispatcher",
-        "_closed_event",
-        "_conn_exc",
-    )
+class BaseHttp2Connection(AsyncHttp2Connection, abc.ABC):
+    """Base class for HTTP/2 connections using AnyIO."""
 
     _tg: anyio_abc.TaskGroup
     _h2_core: H2Connection
-    _net_stream: AsyncNetworkStream
 
     # some managers
     _stream_manager: StreamManager
     _ping_manager: CallbackManager[bytes, bytes]
     _settings_manager: CallbackManager[str, Http2ChangedSettingsType]
-
-    # send/receive buffer
-    _send_buffer: tuple[anyio_abc.ObjectSendStream[AsyncSendTracker], anyio_abc.ObjectReceiveStream[AsyncSendTracker]]
 
     # event dispatcher
     _event_dispatcher: _EventDispatcher
@@ -101,29 +76,24 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
 
     def __init__(
         self,
-        net_stream: AsyncNetworkStream,
         h2_config: H2Configuration,
         stream_handler: Optional[AsyncHttp2StreamHandlerType] = None,
+        task_group: Optional[anyio_abc.TaskGroup] = None,
     ) -> None:
         """Initialize a new HTTP/2 connection.
 
         Args:
-            net_stream: The underlying network stream for sending/receiving data.
             h2_config: Configuration options for the HTTP/2 protocol.
             stream_handler: Optional callback for handling new streams.
         """
         super().__init__()
-        self._tg = anyio.create_task_group()
+        self._tg = task_group or anyio.create_task_group()
         self._h2_core = H2Connection(h2_config)
-        self._net_stream = net_stream
 
         self._stream_manager = StreamManager(self._tg, stream_handler, self._streams_monitor)
         self._ping_manager: CallbackManager[bytes, bytes] = CallbackManager(self._tg)
         self._settings_manager: CallbackManager[str, Http2ChangedSettingsType] = CallbackManager(self._tg)
 
-        # Create a zero-buffer stream for precise backpressure control
-        sender, receiver = anyio.create_memory_object_stream[AsyncSendTracker](max_buffer_size=0)
-        self._send_buffer = (sender, receiver)
         self._closed_event = anyio.Event()
         self._conn_exc = None
 
@@ -135,51 +105,6 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
             h2_events.SettingsAcknowledged: self._handle_settings_ack,
             h2_events.UnknownFrameReceived: self._handle_unknown_event,
         }
-
-    async def __aenter__(self):
-        """Enter the connection context and initialize the connection.
-
-        Returns:
-            The connection instance.
-        """
-        await super().__aenter__()
-
-        # Register TaskGroup and initialize HTTP/2 connection
-        await self.enter_async_context(self._tg)
-        self.callback(self._tg.cancel_scope.cancel)
-        await self._initialize()
-
-        # Start background tasks
-        self._tg.start_soon(self._send_loop)  # type: ignore[no-untyped-call]
-        self._tg.start_soon(self._receive_loop)  # type: ignore[no-untyped-call]
-
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit the connection context and clean up resources."""
-        # Attempt graceful closure if not already closed
-        if not self._closed_event.is_set():
-            try:
-                await self.aclose()
-            except Exception:
-                # Ignore errors during graceful closure in exit context
-                pass
-
-        # Clean up network stream
-        try:
-            await self._net_stream.aclose()
-        except Exception:
-            # Ignore network cleanup errors
-            pass
-
-        # Ensure connection is marked as closed
-        self._closed_event.set()
-        await self._ping_manager.aclose()
-        await self._settings_manager.aclose()
-        await self._stream_manager.aclose()
-
-        # Let parent handle the rest
-        return await super().__aexit__(exc_type, exc_val, exc_tb)
 
     # ----------- Properties -----------
     @property
@@ -211,114 +136,17 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
 
     @property
     def connected(self) -> bool:
-        """Check if the connection is active.
+        """Checks if the connection is currently active.
 
         Returns:
-            True if the connection is active, False otherwise.
+            bool: True if the connection is active, False otherwise.
         """
-        return not self._closed_event.is_set()
-
-    async def create_stream(self, stream_id: int = -1) -> AsyncHttp2Stream:
-        if self._conn_exc:
-            raise self._conn_exc
-        return AnyIOHttp2Stream(self, stream_id)
-
-    async def start(self) -> None:
-        await self.__aenter__()
-
-    async def _initialize(self) -> None:
-        """Initialize HTTP/2 connection protocol handshake.
-
-        Sends the connection preface and initial SETTINGS frame as required
-        by RFC 7540. This establishes the HTTP/2 protocol session.
-
-        Raises:
-            H2ConnectionError: If protocol initialization fails or network error occurs.
-        """
-        try:
-            self._h2_core.initiate_connection()
-            data_to_send = self._h2_core.data_to_send()
-            if data_to_send:
-                await self._net_stream.send(data_to_send)
-        except Exception as e:
-            raise H2ConnectionError(f"Connection initialization failed: {e}") from e
-
-    # ----------- send/receive loops -----------
-
-    async def _send_loop(self) -> None:
-        """Internal send loop that pulls data from the send buffer and writes it to the network stream.
-
-        This is a background task that continuously processes outgoing data requests.
-        """
-        tracker: Optional[AsyncSendTracker] = None
-        try:
-            receiver = self._send_buffer[1]
-            async with receiver:
-                async for next_tracker in receiver:
-                    tracker = next_tracker
-                    # Generate the data to send
-                    tracker.trigger()
-                    data_to_send = self._h2_core.data_to_send()
-                    if data_to_send:
-                        await self._net_stream.send(data_to_send)
-
-                    # Notify the tracker that the data has been sent
-                    tracker.complete()
-        except Exception as e:
-            if isinstance(e, SendError):
-                exc = H2ConnectionError(f"Failed to send data over network stream (SendError): {e}", e)
-            elif isinstance(e, anyio.get_cancelled_exc_class()):
-                exc = H2ConnectionError("Send loop was cancelled (likely during shutdown)", e)
-            elif isinstance(e, h2_exceptions.ProtocolError):
-                exc = H2ConnectionError(f"Protocol error in send loop: {type(e).__name__}: {e}", e)
-            else:
-                exc = H2ConnectionError(f"Unexpected error in send loop: {type(e).__name__}: {e}", e)
-
-            if tracker:
-                # If we have a tracker, mark it as complete with the exception
-                tracker.complete(exc)
-            if not self._conn_exc:
-                # Only set the connection exception if it hasn't been set yet
-                self._conn_exc = exc
-        finally:
-            self._closed_event.set()
-
-    async def _receive_loop(self) -> None:
-        """Internal receive loop that pulls raw data from the network stream
-        and dispatches parsed HTTP/2 events.
-
-        This is a background task that continuously reads from the network connection.
-        """
-        try:
-            while True:
-                data = await self._net_stream.receive()
-                if not data:
-                    continue
-
-                events = self._h2_core.receive_data(data)
-
-                if events:
-                    await self.handle_events(events)
-
-        except Exception as e:
-            if isinstance(e, ReceiveError):
-                exc = H2ConnectionError(f"Failed to receive data from network stream (ReceiveError): {e}", e)
-            elif isinstance(e, anyio.get_cancelled_exc_class()):
-                exc = H2ConnectionError("Receive loop was cancelled (likely during shutdown)", e)
-            elif isinstance(e, h2_exceptions.ProtocolError):
-                exc = H2ConnectionError(f"Protocol error in receive loop: {type(e).__name__}: {e}", e)
-            else:
-                exc = H2ConnectionError(f"Unexpected error in receive loop: {type(e).__name__}: {e}", e)
-
-            if not self._conn_exc:
-                self._conn_exc = exc
-        finally:
-            self._closed_event.set()
+        return not self._closed_event.is_set() and not self._conn_exc
 
     # ----------- Internal API for sending data -----------
 
     async def send(self, tracker: AsyncSendTracker) -> None:
-        """Enqueue data to be sent by the connection.
+        """Initiates sending data over the HTTP/2 connection.
 
         This method is an internal API used by HTTP/2 streams and should not
         be called by end-users directly.
@@ -335,7 +163,12 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
             tracker.complete(exc)
             return
 
-        await self._send_buffer[0].send(tracker)
+        await self._do_send(tracker)
+
+    @abc.abstractmethod
+    async def _do_send(self, tracker: AsyncSendTracker) -> None:
+        """Actually perform the send operation."""
+        raise NotImplementedError()
 
     @asynccontextmanager
     async def _send_guard(self):
@@ -358,6 +191,11 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
             raise inner_exc from e
 
     # ----------- Public API for HTTP/2 operations -----------
+
+    async def create_stream(self, stream_id: int = -1) -> AsyncHttp2Stream:
+        if self._conn_exc:
+            raise self._conn_exc
+        return AnyIOHttp2Stream(self, stream_id)
 
     async def update_settings(
         self, settings: Http2SettingsType, handler: Optional[AsyncSettingsAckHandlerType] = None
@@ -552,9 +390,36 @@ class AnyIOHttp2Connection(AsyncHttp2Connection, AsyncExitStack):
         """
         if not self._conn_exc or active_streams > 0:
             return
-
-        # If the connection is closed and there are no active streams, set the closed event
         logger.debug("No active streams left on terminated connection, closing")
+        self._finalize()
+
+    def _finalize(
+        self, error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR, exc: Optional[Exception] = None
+    ) -> None:
+        if self._closed_event.is_set():
+            return
+
+        if self.stream_manager.count > 0:
+            if not error_code:
+                if isinstance(exc, ConnectError):
+                    error_code = Http2ErrorCode.CONNECT_ERROR
+                elif isinstance(exc, h2_exceptions.ProtocolError):
+                    error_code = exc.error_code
+                else:
+                    error_code = Http2ErrorCode.INTERNAL_ERROR
+
+            # Build a ConnectionTerminated event to notify the relevant streams
+            event = h2_events.ConnectionTerminated()
+            event.error_code = error_code
+            event.last_stream_id = 0
+
+            try:
+                self.task_group.start_soon(self.stream_manager.dispatch_event, event)
+            except Exception as e:
+                logger.error("Failed to dispatch event: %s", e)
+                pass
+
+        # Finally set the closed event
         self._closed_event.set()
 
     async def wait_until_closed(self) -> None:

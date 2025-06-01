@@ -21,15 +21,19 @@ from typing import Callable, Optional
 __all__ = [
     "ConnectionState",
     "DataEventType",
-    "StateListener",
-    "DataListener",
-    "ChildrenListener",
+    "StateListenerType",
+    "DataListenerType",
+    "ChildrenListenerType",
     "ZookeeperClient",
-    "AsyncStateListener",
-    "AsyncDataListener",
-    "AsyncChildrenListener",
+    "ZookeeperTransport",
+    "AsyncStateListenerType",
+    "AsyncDataListenerType",
+    "AsyncChildrenListenerType",
     "AsyncZookeeperClient",
+    "AsyncZookeeperTransport",
 ]
+
+from dubbo.common import URL
 
 
 class ConnectionState(enum.StrEnum):
@@ -55,11 +59,11 @@ class DataEventType(enum.StrEnum):
 
 
 # Called whenever the ZooKeeper connection state changes.
-StateListener = Callable[[ConnectionState], None]
+StateListenerType = Callable[[ConnectionState], None]
 # Called whenever a data node event occurs.
-DataListener = Callable[[str, bytes, DataEventType], None]
+DataListenerType = Callable[[str, bytes, DataEventType], None]
 # Called whenever the direct children of a watched path change.
-ChildrenListener = Callable[[list[str]], None]
+ChildrenListenerType = Callable[[list[str]], None]
 
 
 class ZookeeperClient(abc.ABC):
@@ -203,7 +207,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def add_state_listener(self, listener: StateListener) -> None:
+    def add_state_listener(self, listener: StateListenerType) -> None:
         """
         Register a state listener to receive connection state changes.
 
@@ -213,7 +217,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def remove_state_listener(self, listener: StateListener) -> None:
+    def remove_state_listener(self, listener: StateListenerType) -> None:
         """
         Unregister a previously added state listener.
 
@@ -223,7 +227,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def add_data_listener(self, path: str, listener: DataListener) -> None:
+    def add_data_listener(self, path: str, listener: DataListenerType) -> None:
         """
         Register a data listener on the specified node.
 
@@ -237,7 +241,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def remove_data_listener(self, path: str, listener: DataListener) -> None:
+    def remove_data_listener(self, path: str, listener: DataListenerType) -> None:
         """
         Unregister a previously added data listener from the specified node.
 
@@ -248,7 +252,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def add_children_listener(self, path: str, listener: ChildrenListener) -> None:
+    def add_children_listener(self, path: str, listener: ChildrenListenerType) -> None:
         """
         Register a children listener on the specified node.
 
@@ -262,7 +266,7 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def remove_children_listener(self, path: str, listener: ChildrenListener) -> None:
+    def remove_children_listener(self, path: str, listener: ChildrenListenerType) -> None:
         """
         Unregister a previously added children listener from the specified node.
 
@@ -273,10 +277,28 @@ class ZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
 
+class ZookeeperTransport(abc.ABC):
+    @abc.abstractmethod
+    def connect(self, url: URL) -> ZookeeperClient:
+        """
+        Connect to a ZooKeeper server using the provided URL.
+
+        Args:
+            url: The URL containing connection details (host, port, etc.).
+
+        Returns:
+            An instance of ZookeeperClient connected to the server.
+
+        Raises:
+            ConnectionError: If the connection fails.
+        """
+        raise NotImplementedError()
+
+
 # Async versions of the listeners
-AsyncStateListener = Callable[[ConnectionState], Awaitable[None]]
-AsyncDataListener = Callable[[str, bytes, DataEventType], Awaitable[None]]
-AsyncChildrenListener = Callable[[list[str]], Awaitable[None]]
+AsyncStateListenerType = Callable[[ConnectionState], Awaitable[None]]
+AsyncDataListenerType = Callable[[str, bytes, DataEventType], Awaitable[None]]
+AsyncChildrenListenerType = Callable[[list[str]], Awaitable[None]]
 
 
 class AsyncZookeeperClient(abc.ABC):
@@ -325,25 +347,43 @@ class AsyncZookeeperClient(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def add_state_listener(self, listener: AsyncStateListener) -> None:
+    async def add_state_listener(self, listener: AsyncStateListenerType) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def remove_state_listener(self, listener: AsyncStateListener) -> None:
+    async def remove_state_listener(self, listener: AsyncStateListenerType) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def add_data_listener(self, path: str, listener: AsyncDataListener) -> None:
+    async def add_data_listener(self, path: str, listener: AsyncDataListenerType) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def remove_data_listener(self, path: str, listener: AsyncDataListener) -> None:
+    async def remove_data_listener(self, path: str, listener: AsyncDataListenerType) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def add_children_listener(self, path: str, listener: AsyncChildrenListener) -> None:
+    async def add_children_listener(self, path: str, listener: AsyncChildrenListenerType) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def remove_children_listener(self, path: str, listener: AsyncChildrenListener) -> None:
+    async def remove_children_listener(self, path: str, listener: AsyncChildrenListenerType) -> None:
+        raise NotImplementedError()
+
+
+class AsyncZookeeperTransport(abc.ABC):
+    @abc.abstractmethod
+    async def connect(self, url: URL) -> AsyncZookeeperClient:
+        """
+        Asynchronously connect to a ZooKeeper server using the provided URL.
+
+        Args:
+            url: The URL containing connection details (host, port, etc.).
+
+        Returns:
+            An instance of AsyncZookeeperClient connected to the server.
+
+        Raises:
+            ConnectionError: If the connection fails.
+        """
         raise NotImplementedError()

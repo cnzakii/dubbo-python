@@ -64,12 +64,12 @@ UDPPacketType = tuple[bytes, tuple[str, int]]
 UNIXDatagramPacketType = tuple[bytes, str]
 
 
-_ItemT = TypeVar("_ItemT", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
-_StreamT = TypeVar("_StreamT")
-_HandlerT = TypeVar("_HandlerT", bound=Callable)
+_T_Item = TypeVar("_T_Item", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
+_T_Stream = TypeVar("_T_Stream")
+_T_Handler = TypeVar("_T_Handler", bound=Callable)
 
 
-class NetworkStream(abc.ABC, Generic[_ItemT]):
+class NetworkStream(abc.ABC, Generic[_T_Item]):
     """Abstract base class representing a network stream.
 
     This class provides a generic interface for network communication streams that can
@@ -98,7 +98,7 @@ class NetworkStream(abc.ABC, Generic[_ItemT]):
     """
 
     @abc.abstractmethod
-    def send(self, item: _ItemT, timeout: Optional[float] = None) -> None:
+    def send(self, item: _T_Item, timeout: Optional[float] = None) -> None:
         """Send an item through the network stream.
 
         Args:
@@ -115,7 +115,7 @@ class NetworkStream(abc.ABC, Generic[_ItemT]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: Optional[float] = None) -> _ItemT:
+    def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: Optional[float] = None) -> _T_Item:
         """Receive an item from the network stream.
 
         Args:
@@ -161,7 +161,7 @@ UDPDatagramHandlerType = Callable[[NetworkStream[UDPPacketType], UDPPacketType],
 UNIXDatagramHandlerType = Callable[[NetworkStream[UNIXDatagramPacketType], UNIXDatagramPacketType], None]
 
 
-class NetworkServer(abc.ABC, Generic[_StreamT, _HandlerT]):
+class NetworkServer(abc.ABC, Generic[_T_Stream, _T_Handler]):
     """Abstract base class representing a network server.
 
     This class provides an interface for network servers that can accept and handle
@@ -183,7 +183,7 @@ class NetworkServer(abc.ABC, Generic[_StreamT, _HandlerT]):
     """
 
     @abc.abstractmethod
-    def serve(self, handler: _HandlerT) -> None:
+    def serve(self, handler: _T_Handler) -> None:
         """Start serving client connections using the provided handler.
 
         This method begins accepting incoming connections and processes each one
@@ -515,7 +515,7 @@ class NetworkBackend(abc.ABC):
 # ---------------------------------------------------------------
 
 
-class AsyncNetworkStream(abc.ABC, Generic[_ItemT]):
+class AsyncNetworkStream(abc.ABC, Generic[_T_Item]):
     """Asynchronous version of NetworkStream.
 
     Provides the same interface as NetworkStream but with async/await semantics.
@@ -523,7 +523,7 @@ class AsyncNetworkStream(abc.ABC, Generic[_ItemT]):
     """
 
     @abc.abstractmethod
-    async def send(self, item: _ItemT) -> None:
+    async def send(self, item: _T_Item) -> None:
         """Asynchronously send an item through the network stream.
 
         Args:
@@ -535,7 +535,7 @@ class AsyncNetworkStream(abc.ABC, Generic[_ItemT]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES) -> _ItemT:
+    async def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES) -> _T_Item:
         """Asynchronously receive an item from the network stream.
 
         Args:
@@ -574,14 +574,14 @@ AsyncUNIXDatagramHandlerType = Callable[
 ]
 
 
-class AsyncNetworkServer(abc.ABC, Generic[_StreamT, _HandlerT]):
+class AsyncNetworkServer(abc.ABC, Generic[_T_Stream, _T_Handler]):
     """Asynchronous version of NetworkServer.
 
     Provides the same interface as NetworkServer but with async/await semantics.
     """
 
     @abc.abstractmethod
-    async def serve(self, handler: _HandlerT) -> None:
+    async def serve(self, handler: _T_Handler) -> None:
         """Asynchronously start serving client connections using the provided handler.
 
         Args:

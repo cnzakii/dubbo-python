@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._connection import AnyIOHttp2Connection
+from ._auto import AutoHttp2Transport
 from ._stream import AnyIOHttp2Stream
-from ._transport import AnyIOHttp2Client, AnyIOHttp2Transport
+from .aio import AioHttp2Transport
+from .any import AnyIOHttp2Transport
 
 __all__ = [
-    "AnyIOHttp2Client",
-    "AnyIOHttp2Connection",
-    "AnyIOHttp2Stream",
+    "AioHttp2Transport",
     "AnyIOHttp2Transport",
+    "AutoHttp2Transport",
+    "AnyIOHttp2Stream",
 ]

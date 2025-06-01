@@ -117,13 +117,16 @@ class CallbackManager(Generic[_KeyT, _ValueT]):
         else:
             logger.debug("No callbacks registered for key: %s, value: %s", key, value)
 
+    def close(self) -> None:
+        self._callbacks.clear()
+
     async def aclose(self) -> None:
         """Close the callback manager and release all resources.
 
         This method clears all registered callbacks and should be called
         when the manager is no longer needed.
         """
-        self._callbacks.clear()
+        self.close()
 
 
 class StreamManager:
@@ -162,6 +165,11 @@ class StreamManager:
         self._count = 0
         self._stream_handler = stream_handler
         self._count_monitor = count_monitor or (lambda _: None)
+
+    @property
+    def count(self) -> int:
+        """Get the current count of registered streams."""
+        return self._count
 
     def register(self, stream: AsyncHttp2Stream) -> None:
         """Register a stream with the manager.
@@ -229,7 +237,8 @@ class StreamManager:
         Args:
             event: The window update event to distribute.
         """
-        for stream in self._streams.values():
+        copied_streams = list(self._streams.values())
+        for stream in copied_streams:
             await stream.handle_event(event)
 
     async def _handle_connection_termination(self, event: h2_events.ConnectionTerminated) -> None:
@@ -279,7 +288,8 @@ class StreamManager:
         """
         # Handle some special events
         if isinstance(event, h2_events.WindowUpdated) and event.stream_id == 0:
-            await self._handle_connection_window_update(event)
+            # This is a time-consuming operation, so we run it in the task group
+            self._tg.start_soon(self._handle_connection_window_update, event)
         elif isinstance(event, h2_events.ConnectionTerminated):
             await self._handle_connection_termination(event)
         else:
@@ -291,7 +301,7 @@ class StreamManager:
             else:
                 logger.warning("Stream %s not found for event: %s", stream_id, event)
 
-    async def aclose(self) -> None:
+    def close(self) -> None:
         """Close the stream manager and release all resources.
 
         This method clears all registered streams and should be called when
@@ -302,3 +312,11 @@ class StreamManager:
         if self._count > 0:
             self._count_monitor(0)
         self._count = 0
+
+    async def aclose(self) -> None:
+        """Close the stream manager and release all resources.
+
+        This method clears all registered streams and should be called when
+        the manager is no longer needed.
+        """
+        self.close()

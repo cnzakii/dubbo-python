@@ -52,6 +52,13 @@ class AnyIOHttp2Client(AsyncHttp2Client, AnyIOHttp2Connection):
     def __init__(self, net_stream: AsyncNetworkStream):
         super().__init__(net_stream, H2Configuration(client_side=True, validate_inbound_headers=False))
 
+    async def __aenter__(self) -> "AnyIOHttp2Client":
+        await AnyIOHttp2Connection.__aenter__(self)
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await AnyIOHttp2Connection.__aexit__(self, exc_type, exc_value, traceback)
+
 
 class AnyIOHttp2Server(AsyncHttp2Server):
     """An HTTP/2 server connection using AnyIO."""
@@ -85,7 +92,7 @@ class AnyIOHttp2Server(AsyncHttp2Server):
                 await self._connection_handler(conn)
 
             # wait until the connection is closed
-            await anyio.sleep(10000)
+            await conn.wait_until_closed()
             logger.debug("HTTP/2 Connection closed: %s", stream.get_extra_info("remote_address"))
 
     async def serve(
@@ -118,18 +125,7 @@ class AnyIOHttp2Transport(AsyncHttp2Transport):
         self._backend = AnyIOBackend()
 
     async def connect(self, url: URL) -> AnyIOHttp2Client:
-        """Connects to the given URL and returns an HTTP/2 client connection.
-
-        Args:
-            url: URL object containing host, port, and query parameters.
-
-        Returns:
-            AnyIOHttp2Client: An established HTTP/2 client connection.
-
-        Raises:
-            ConnectTimeout: If connection times out.
-            ConnectError: For other connection errors.
-        """
+        """Connects to the given URL and returns an HTTP/2 client connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
         exc_map: ExceptionMapping = {
@@ -138,21 +134,12 @@ class AnyIOHttp2Transport(AsyncHttp2Transport):
         with map_exceptions(exc_map):
             with anyio.fail_after(timeout):
                 net_stream = await self._backend.connect_tcp(url.host, url.port)
+                client = AnyIOHttp2Client(net_stream)
                 logger.info("HTTP/2 connection established to %s", net_stream.get_extra_info("remote_address"))
-                return AnyIOHttp2Client(net_stream)
+                return client
 
     async def bind(self, url: URL) -> AnyIOHttp2Server:
-        """Binds to the given URL and returns an HTTP/2 server connection.
-
-        Args:
-            url: URL object containing host, port, and query parameters.
-
-        Returns:
-            AnyIOHttp2Server: An established HTTP/2 server instance.
-
-        Raises:
-            ConnectTimeout: If binding times out.
-        """
+        """Binds to the given URL and returns an HTTP/2 server connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
         exc_map: ExceptionMapping = {

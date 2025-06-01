@@ -48,6 +48,15 @@ class Protocol(abc.ABC):
         - Implementations must be thread-safe and generally follow singleton usage.
     """
 
+    @property
+    @abc.abstractmethod
+    def default_port(self) -> int:
+        """Returns the default port for the protocol.
+
+        This port is used when no specific port is specified in the URL.
+        """
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def export(self, invoker: "Invoker") -> "Exporter":
         """Exports a service for remote invocation.
@@ -97,6 +106,15 @@ class AsyncProtocol(abc.ABC):
     Provides async methods to export services, refer remote services,
     and destroy protocol resources.
     """
+
+    @property
+    @abc.abstractmethod
+    def default_port(self) -> int:
+        """Returns the default port for the protocol.
+
+        This port is used when no specific port is specified in the URL.
+        """
+        raise NotImplementedError()
 
     @abc.abstractmethod
     async def export(self, invoker: "AsyncInvoker") -> "AsyncExporter":

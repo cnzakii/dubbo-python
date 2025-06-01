@@ -20,9 +20,17 @@ from kazoo.exceptions import NoNodeError
 
 from dubbo.common import URL, constants
 from dubbo.logger import logger
-from dubbo.remoting.zookeeper import ChildrenListener, DataListener, StateListener, ZookeeperClient
+from dubbo.remoting.zookeeper import (
+    ChildrenListenerType,
+    DataListenerType,
+    StateListenerType,
+    ZookeeperClient,
+    ZookeeperTransport,
+)
 
 from ._base import ChildrenAdapterFactory, DataAdapterFactory, StateListenerAdapter
+
+__all__ = ["KazooZookeeperClient", "KazooTransport"]
 
 
 class KazooZookeeperClient(ZookeeperClient):
@@ -83,20 +91,33 @@ class KazooZookeeperClient(ZookeeperClient):
     def get_children(self, path: str) -> list[str]:
         return self._kazoo.get_children(path)
 
-    def add_state_listener(self, listener: StateListener) -> None:
+    def add_state_listener(self, listener: StateListenerType) -> None:
         self._state_adapter.add(listener)
 
-    def remove_state_listener(self, listener: StateListener) -> None:
+    def remove_state_listener(self, listener: StateListenerType) -> None:
         self._state_adapter.remove(listener)
 
-    def add_data_listener(self, path: str, listener: DataListener) -> None:
+    def add_data_listener(self, path: str, listener: DataListenerType) -> None:
         self._data_factory.add_listener(path, listener)
 
-    def remove_data_listener(self, path: str, listener: DataListener) -> None:
+    def remove_data_listener(self, path: str, listener: DataListenerType) -> None:
         self._data_factory.remove_listener(path, listener)
 
-    def add_children_listener(self, path: str, listener: ChildrenListener) -> None:
+    def add_children_listener(self, path: str, listener: ChildrenListenerType) -> None:
         self._children_factory.add_listener(path, listener)
 
-    def remove_children_listener(self, path: str, listener: ChildrenListener) -> None:
+    def remove_children_listener(self, path: str, listener: ChildrenListenerType) -> None:
         self._children_factory.remove_listener(path, listener)
+
+
+class KazooTransport(ZookeeperTransport):
+    def connect(self, url: URL) -> ZookeeperClient:
+        """
+        Connect to the Zookeeper server using Kazoo.
+
+        :param url: The URL of the Zookeeper server.
+        :return: An instance of KazooZookeeperClient.
+        """
+        client = KazooZookeeperClient(url)
+        client.start()
+        return client

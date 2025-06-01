@@ -75,7 +75,6 @@ class Http2Stream(abc.ABC):
     independent flow control and state transitions according to RFC 7540.
 
     Example:
-        stream = connection.create_stream()
         stream.send_headers([(':method', 'GET'), (':path', '/api')])
         stream.send_data(b'request body', end_stream=True)
         response_headers = stream.receive_headers()
@@ -357,6 +356,16 @@ class Http2Connection(abc.ABC):
         connection.close()
     """
 
+    @property
+    @abc.abstractmethod
+    def connected(self) -> bool:
+        """Check if the connection is currently established.
+
+        Returns:
+            True if the connection is active, False otherwise.
+        """
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def start(self) -> None:
         """Start the HTTP/2 connection.
@@ -474,9 +483,22 @@ class Http2Client(Http2Connection, abc.ABC):
     Inherits all capabilities from Http2Connection but specifically designed
     for client-side HTTP/2 operations. Client connections initiate streams
     with odd-numbered stream IDs.
+
+    Example:
+        with transport.connect(URL("http://example.com")) as client:
+            stream = client.create_stream()
+            stream.send_headers([(':method', 'GET'), (':path', '/')])
+            response_headers = stream.receive_headers()
+            response_data = stream.receive_data()
     """
 
-    pass
+    @abc.abstractmethod
+    def __enter__(self) -> "Http2Client":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        raise NotImplementedError()
 
 
 class Http2Server(abc.ABC):
@@ -674,21 +696,16 @@ class AsyncHttp2Connection(abc.ABC):
     Note:
         This is an abstract base class and cannot be instantiated directly.
         Concrete implementations should be used for actual HTTP/2 communication.
-
-    Example:
-        async def main():
-            connection = AsyncHttp2Connection(...)
-            await connection.start()
-            stream = await connection.create_stream()
-            await stream.send_headers([(':method', 'GET'), (':path', '/')])
-            await connection.aclose()
-
-        asyncio.run(main())
     """
 
+    @property
     @abc.abstractmethod
-    async def start(self) -> None:
-        """Async version of start."""
+    def connected(self) -> bool:
+        """Check if the connection is currently established.
+
+        Returns:
+            True if the connection is active, False otherwise.
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -746,9 +763,27 @@ class AsyncHttp2Client(AsyncHttp2Connection, abc.ABC):
     """Async HTTP/2 client connection.
 
     Async version of Http2Client for client-side operations.
+
+
+    Example:
+        async def main():
+            async with await transport.connect(...) as client:
+                stream = await connection.create_stream()
+                await stream.send_headers([(':method', 'GET'), (':path', '/')])
+                response_headers = await stream.receive_headers()
+
+        asyncio.run(main())
     """
 
-    pass
+    @abc.abstractmethod
+    async def __aenter__(self) -> "AsyncHttp2Client":
+        """Enter the async context manager and return the client instance."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        """Exit the async context manager and clean up resources."""
+        raise NotImplementedError()
 
 
 class AsyncHttp2Server(abc.ABC):

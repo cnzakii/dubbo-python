@@ -334,6 +334,28 @@ class URL:
         value = self.get_method_param(method, key)
         return value.lower() in _BOOL_TRUE if value else default
 
+    def get_group(self, default: str = "") -> str:
+        """Get the group parameter value.
+
+        Args:
+            default: Default value if 'group' parameter not found
+
+        Returns:
+            Group value if present, else default
+        """
+        return self.get_param(constants.GROUP_KEY, default)
+
+    def get_interface(self, default: str = "") -> str:
+        """Get the service parameter value.
+
+        Args:
+            default: Default value if 'service' parameter not found
+
+        Returns:
+            Service value if present, else default
+        """
+        return self.get_param(constants.INTERFACE_KEY, default)
+
     # ---------------------- Attribute Methods ----------------------
 
     def add_attribute(self, key: str, value: Any) -> None:

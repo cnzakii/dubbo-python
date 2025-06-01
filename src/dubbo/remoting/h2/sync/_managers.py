@@ -184,6 +184,12 @@ class StreamManager:
         self._stream_handler = stream_handler
         self._count_monitor = count_monitor or (lambda _: None)
 
+    @property
+    def count(self) -> int:
+        """Get the current count of registered streams."""
+        with self._lock:
+            return self._count
+
     def register(self, stream: Http2Stream) -> None:
         """Register a new stream for management.
 

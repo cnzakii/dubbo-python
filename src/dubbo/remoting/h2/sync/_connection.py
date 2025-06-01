@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -28,7 +27,7 @@ from dubbo.common.types import BytesLike
 from dubbo.common.utils import common as common_utils
 from dubbo.logger import logger
 from dubbo.remoting.backend import NetworkStream
-from dubbo.remoting.backend.exceptions import ReceiveError, SendError
+from dubbo.remoting.backend.exceptions import ConnectError, ReceiveError, SendError
 from dubbo.remoting.h2 import (
     Http2ChangedSetting,
     Http2ChangedSettingsType,
@@ -51,6 +50,7 @@ from dubbo.remoting.h2.exceptions import (
 from ._managers import CallbackManager, StreamManager
 from ._stream import SyncHttp2Stream
 from ._tracker import SendTracker, dummy_tracker
+from ._utils import EndOfStream, SyncObjectStream
 
 __all__ = ["SyncHttp2Connection"]
 
@@ -89,7 +89,7 @@ class SyncHttp2Connection(Http2Connection):
     _settings_manager: CallbackManager[str, Http2ChangedSettingsType]
 
     # send/receive buffer
-    _send_buffer: queue.Queue[SendTracker]
+    _send_buffer: SyncObjectStream[SendTracker]
 
     _event_dispatcher: _EventDispatcher
 
@@ -123,7 +123,7 @@ class SyncHttp2Connection(Http2Connection):
         self._stream_manager = StreamManager(
             self._executor, stream_handler=stream_handler, count_monitor=self._streams_monitor
         )
-        self._send_buffer: queue.Queue[SendTracker] = queue.Queue(maxsize=1)
+        self._send_buffer: SyncObjectStream[SendTracker] = SyncObjectStream(max_size=1)
 
         self._conn_exc = None
         self._closed_event = threading.Event()
@@ -155,19 +155,14 @@ class SyncHttp2Connection(Http2Connection):
             exc_value: Exception instance that occurred in the context.
             traceback: Traceback information.
         """
-        try:
-            self.close()
-        finally:
-            self._executor.shutdown(wait=True)
-            self._net_stream.close()
-            self._closed_event.set()
-
         if not self._closed_event.is_set():
             try:
                 self.close()
             except Exception:
                 # Ignore errors during graceful closure in exit context
                 pass
+            finally:
+                self._finalize()
 
         # Clean up network stream
         try:
@@ -176,7 +171,6 @@ class SyncHttp2Connection(Http2Connection):
             # Ignore network cleanup errors
             pass
 
-        self._closed_event.set()
         self._ping_manager.close()
         self._settings_manager.close()
         self._stream_manager.close()
@@ -215,6 +209,15 @@ class SyncHttp2Connection(Http2Connection):
         """
         return self._stream_manager
 
+    @property
+    def connected(self) -> bool:
+        """Checks if the connection is currently active.
+
+        Returns:
+            bool: True if the connection is active, False otherwise.
+        """
+        return not self._closed_event.is_set() and not self._conn_exc
+
     def create_stream(self, stream_id: int = -1) -> Http2Stream:
         if self._conn_exc:
             raise self._conn_exc
@@ -246,6 +249,7 @@ class SyncHttp2Connection(Http2Connection):
         This method runs in a dedicated thread and processes outgoing data.
         """
         tracker: Optional[SendTracker] = None
+        raw_exc: Optional[Exception] = None
         try:
             while True:
                 tracker = self._send_buffer.get()
@@ -261,6 +265,7 @@ class SyncHttp2Connection(Http2Connection):
                 # Notify the tracker that the data has been sent
                 tracker.complete()
         except Exception as e:
+            raw_exc = e
             if isinstance(e, SendError):
                 exc = H2ConnectionError(f"Failed to send data over network stream (SendError): {e}", e)
             elif isinstance(e, threading.ThreadError):
@@ -277,16 +282,30 @@ class SyncHttp2Connection(Http2Connection):
                 # Only set the connection exception if it hasn't been set yet
                 self._conn_exc = exc
         finally:
-            self._closed_event.set()
+            self._finalize(exc=raw_exc)
 
-    def _receive_loop(self):
+    def _receive_loop(self) -> None:
+        raw_exc: Optional[Exception] = None
         try:
             while True:
                 data = self._net_stream.receive()
-                with self.h2_core_lock:
-                    events = self._h2_core.receive_data(data)
-                self.handle_events(events)
+
+                try:
+                    with self.h2_core_lock:
+                        events = self._h2_core.receive_data(data)
+                    if events:
+                        self.handle_events(events)
+                except h2_exceptions.ProtocolError as e:
+                    # terminate the connection on protocol errors
+                    self.send(dummy_tracker)
+                    # Build a ConnectionTerminated event to notify the relevant streams
+                    event = h2_events.ConnectionTerminated()
+                    event.error_code = e.error_code
+                    event.last_stream_id = 0
+                    self.stream_manager.dispatch_event(event)
+                    raise  # re-raise
         except Exception as e:
+            raw_exc = e
             if isinstance(e, ReceiveError):
                 exc = H2ConnectionError(f"Failed to receive data from network stream (ReceiveError): {e}", e)
             elif isinstance(e, threading.ThreadError):
@@ -299,7 +318,7 @@ class SyncHttp2Connection(Http2Connection):
             if not self._conn_exc:
                 self._conn_exc = exc
         finally:
-            self._closed_event.set()
+            self._finalize(exc=raw_exc)
 
     # ----------- Internal API for sending data -----------
     def send(self, tracker: SendTracker) -> None:
@@ -313,8 +332,8 @@ class SyncHttp2Connection(Http2Connection):
             return
         try:
             self._send_buffer.put(tracker, timeout=tracker.remaining_time)
-        except queue.Full:
-            tracker.complete(TimeoutError("Send buffer is full, unable to send data"))
+        except EndOfStream as e:
+            tracker.complete(self._conn_exc or H2ConnectionError("Connection is closed, cannot send data", e))
 
     @contextmanager
     def _send_guard(self):
@@ -525,8 +544,35 @@ class SyncHttp2Connection(Http2Connection):
         if not self._conn_exc or active_streams > 0:
             return
 
-        # If the connection is closed and there are no active streams, set the closed event
         logger.debug("No active streams left on terminated connection, closing")
+        self._finalize()
+
+    def _finalize(
+        self, error_code: Union[Http2ErrorCode, int] = Http2ErrorCode.NO_ERROR, exc: Optional[Exception] = None
+    ) -> None:
+        if self._closed_event.is_set():
+            return
+
+        if self.stream_manager.count > 0:
+            if not error_code:
+                if isinstance(exc, ConnectError):
+                    error_code = Http2ErrorCode.CONNECT_ERROR
+                elif isinstance(exc, h2_exceptions.ProtocolError):
+                    error_code = exc.error_code
+                else:
+                    error_code = Http2ErrorCode.INTERNAL_ERROR
+
+            # Build a ConnectionTerminated event to notify the relevant streams
+            event = h2_events.ConnectionTerminated()
+            event.error_code = error_code
+            event.last_stream_id = 0
+
+            self.stream_manager.dispatch_event(event)
+
+        # close send buffer to signal no more data will be sent
+        self._send_buffer.stop()
+
+        # set the closed event
         self._closed_event.set()
 
     def wait_until_closed(self, timeout: Optional[float] = None) -> None:

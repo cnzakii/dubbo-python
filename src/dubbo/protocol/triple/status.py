@@ -13,21 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
+from typing import Optional
 
-from dubbo.common.classes import SingletonBase
-
-
-class Dubbo(SingletonBase):
-    """
-    The main entry point for the Dubbo framework.
-    """
-
-    pass
+from dubbo.protocol.triple.grpc.constants import StatusCode
 
 
-class AsyncDubbo(SingletonBase):
-    """
-    The main entry point for the Dubbo framework.
-    """
-
-    pass
+@dataclass
+class TriRpcStatus:
+    code: StatusCode
+    description: Optional[str] = None
+    cause: Optional[Exception] = None

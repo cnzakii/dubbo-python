@@ -14,10 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._async import AsyncKazooZookeeperClient
-from ._sync import KazooZookeeperClient
+from ._async import AsyncKazooTransport, AsyncKazooZookeeperClient
+from ._sync import KazooTransport, KazooZookeeperClient
 
 __all__ = [
-    "KazooZookeeperClient",
     "AsyncKazooZookeeperClient",
+    "AsyncKazooTransport",
+    "KazooZookeeperClient",
+    "KazooTransport",
 ]

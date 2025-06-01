@@ -34,7 +34,7 @@ class H2ConnectionError(ConnectError):
     __slots__ = ()
 
 
-class H2ConnectionTerminatedError(H2ConnectionError):
+class H2ConnectionTerminatedError(H2ProtocolError):
     """Raised when HTTP/2 connection is terminated via GOAWAY frame."""
 
     __slots__ = ("error_code", "last_stream_id", "additional_data", "remote_termination")
@@ -101,7 +101,7 @@ class H2StreamInactiveError(H2StreamError):
 
     __slots__ = ()
 
-    def __init__(self, stream_id: int, message: Optional[str] = None) -> None:
+    def __init__(self, *, stream_id: int = -1, message: Optional[str] = None) -> None:
         """Initialize inactive stream error.
 
         Args:
@@ -192,7 +192,7 @@ def convert_h2_exception(exc: h2_exceptions.H2Error) -> H2ProtocolError:
         return H2StreamClosedError(exc.stream_id, True, True)
 
     if isinstance(exc, h2_exceptions.NoSuchStreamError):
-        return H2StreamInactiveError(exc.stream_id, f"Stream {exc.stream_id} does not exist")
+        return H2StreamInactiveError(message=f"Stream {exc.stream_id} does not exist")
 
     # Handle generic stream errors
     if hasattr(exc, "stream_id"):

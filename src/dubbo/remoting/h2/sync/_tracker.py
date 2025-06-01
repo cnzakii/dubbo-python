@@ -68,10 +68,10 @@ class Deadline:
         return max(0.0, remaining)
 
 
-_Result = TypeVar("_Result")
+_T_Result = TypeVar("_T_Result")
 
 
-class SendTracker(Generic[_Result]):
+class SendTracker(Generic[_T_Result]):
     """
     A synchronous tracker for coordinating deferred send actions and confirming completion.
 
@@ -103,19 +103,19 @@ class SendTracker(Generic[_Result]):
     __slots__ = ("_event", "_result", "_exc", "_send_func", "_no_wait", "_deadline")
 
     _event: threading.Event
-    _result: Optional[_Result]
+    _result: Optional[_T_Result]
     _exc: Optional[Exception]
-    _send_func: Callable[[], _Result]
+    _send_func: Callable[[], _T_Result]
     _no_wait: bool
     _deadline: Deadline
 
     @overload
-    def __init__(self, send_func: Callable[[], _Result], *, deadline: Deadline, no_wait: bool = ...) -> None: ...
+    def __init__(self, send_func: Callable[[], _T_Result], *, deadline: Deadline, no_wait: bool = ...) -> None: ...
 
     @overload
     def __init__(
         self,
-        send_func: Callable[[], _Result],
+        send_func: Callable[[], _T_Result],
         *,
         start_time: Optional[float] = ...,
         timeout: Optional[float] = ...,
@@ -124,7 +124,7 @@ class SendTracker(Generic[_Result]):
 
     def __init__(
         self,
-        send_func: Callable[[], _Result],
+        send_func: Callable[[], _T_Result],
         *,
         deadline: Optional[Deadline] = None,
         start_time: Optional[float] = None,
@@ -201,10 +201,11 @@ class SendTracker(Generic[_Result]):
         Args:
             exc: Optional exception to record. If provided, it will be raised when `result()` is called.
         """
-        self._exc = exc
-        self._event.set()
+        if not self._event.is_set():
+            self._exc = exc
+            self._event.set()
 
-    def result(self) -> Optional[_Result]:
+    def result(self) -> Optional[_T_Result]:
         """
         Await completion of the tracker and return the result.
 

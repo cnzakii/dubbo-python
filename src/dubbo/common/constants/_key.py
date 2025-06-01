@@ -21,9 +21,17 @@ HOST_KEY = "host"
 PORT_KEY = "port"
 PATH_KEY = "path"
 
-TIMEOUT_KEY = "timeout"
+INTERFACE_KEY = "interface"
 METHODS_KEY = "methods"
 METHOD_KEY = "method"
+GROUP_KEY = "group"
+VERSION_KEY = "version"
+CATEGORY_KEY = "category"
+
+DYNAMIC_KEY = "dynamic"
+TIMEOUT_KEY = "timeout"
 WEIGHT_KEY = "weight"
 TIMESTAMP_KEY = "timestamp"
 WARMUP_KEY = "warmup"
+
+TOKEN_KEY = "token"

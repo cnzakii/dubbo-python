@@ -25,13 +25,16 @@ from kazoo.interfaces import IAsyncResult
 from dubbo.common import URL, constants
 from dubbo.logger import logger
 from dubbo.remoting.zookeeper import (
-    AsyncChildrenListener,
-    AsyncDataListener,
-    AsyncStateListener,
+    AsyncChildrenListenerType,
+    AsyncDataListenerType,
+    AsyncStateListenerType,
     AsyncZookeeperClient,
+    AsyncZookeeperTransport,
 )
 
 from ._base import ChildrenAdapterFactory, DataAdapterFactory, StateListenerAdapter
+
+__all__ = ["AsyncKazooZookeeperClient", "AsyncKazooTransport"]
 
 
 class KazooFuture:
@@ -154,20 +157,27 @@ class AsyncKazooZookeeperClient(AsyncZookeeperClient):
         future = KazooFuture.wrap_async(async_obj)
         return await future.result()
 
-    async def add_state_listener(self, listener: AsyncStateListener) -> None:
+    async def add_state_listener(self, listener: AsyncStateListenerType) -> None:
         self._state_adapter.add(listener)
 
-    async def remove_state_listener(self, listener: AsyncStateListener) -> None:
+    async def remove_state_listener(self, listener: AsyncStateListenerType) -> None:
         self._state_adapter.remove(listener)
 
-    async def add_data_listener(self, path: str, listener: AsyncDataListener) -> None:
+    async def add_data_listener(self, path: str, listener: AsyncDataListenerType) -> None:
         self._data_factory.add_listener(path, listener)
 
-    async def remove_data_listener(self, path: str, listener: AsyncDataListener) -> None:
+    async def remove_data_listener(self, path: str, listener: AsyncDataListenerType) -> None:
         self._data_factory.remove_listener(path, listener)
 
-    async def add_children_listener(self, path: str, listener: AsyncChildrenListener) -> None:
+    async def add_children_listener(self, path: str, listener: AsyncChildrenListenerType) -> None:
         self._children_factory.add_listener(path, listener)
 
-    async def remove_children_listener(self, path: str, listener: AsyncChildrenListener) -> None:
+    async def remove_children_listener(self, path: str, listener: AsyncChildrenListenerType) -> None:
         self._children_factory.remove_listener(path, listener)
+
+
+class AsyncKazooTransport(AsyncZookeeperTransport):
+    async def connect(self, url: URL) -> AsyncZookeeperClient:
+        client = AsyncKazooZookeeperClient(url)
+        await client.start()
+        return client

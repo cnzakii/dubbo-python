@@ -15,7 +15,6 @@
 # limitations under the License.
 import abc
 import typing
-from typing import Generic, TypeVar
 
 from dubbo.common import AsyncNode, Node
 
@@ -26,10 +25,8 @@ if typing.TYPE_CHECKING:
 
 __all__ = ["Invoker", "AsyncInvoker"]
 
-_T = TypeVar("_T")
 
-
-class Invoker(Node, Generic[_T]):
+class Invoker(Node):
     """Invoker interface for service invocation (API/SPI, Prototype, ThreadSafe).
 
     This interface extends Node and defines the core method `invoke` to perform
@@ -37,7 +34,7 @@ class Invoker(Node, Generic[_T]):
     """
 
     @abc.abstractmethod
-    def invoke(self, invocation: "Invocation") -> "Result[_T]":
+    def invoke(self, invocation: "Invocation") -> "Result":
         """Performs the invocation with the provided invocation details.
 
         Args:
@@ -45,7 +42,7 @@ class Invoker(Node, Generic[_T]):
                 parameters, and other metadata.
 
         Returns:
-            Result[_T]: The result of the invocation, encapsulating
+            Result: The result of the invocation, encapsulating
                 response data or errors.
 
         Raises:
@@ -54,7 +51,7 @@ class Invoker(Node, Generic[_T]):
         raise NotImplementedError()
 
 
-class AsyncInvoker(AsyncNode, Generic[_T]):
+class AsyncInvoker(AsyncNode):
     """Asynchronous Invoker interface for service invocation.
 
     This interface extends AsyncNode to provide an asynchronous version of
@@ -62,7 +59,7 @@ class AsyncInvoker(AsyncNode, Generic[_T]):
     """
 
     @abc.abstractmethod
-    async def invoke(self, invocation: "Invocation") -> "AsyncResult[_T]":
+    async def invoke(self, invocation: "Invocation") -> "AsyncResult":
         """Performs the asynchronous invocation with the given invocation details.
 
         Args:
@@ -70,7 +67,7 @@ class AsyncInvoker(AsyncNode, Generic[_T]):
                 parameters, and other metadata.
 
         Returns:
-            AsyncResult[_T]: An awaitable result that resolves to the invocation response.
+            AsyncResult: An awaitable result that resolves to the invocation response.
 
         Raises:
             RpcError: In case of invocation failure or communication errors.

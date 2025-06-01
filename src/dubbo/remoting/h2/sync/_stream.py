@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import queue
 import threading
 import typing
 from contextlib import contextmanager
@@ -36,6 +35,7 @@ from dubbo.remoting.h2.exceptions import (
 )
 
 from ._tracker import Deadline, SendTracker
+from ._utils import EndOfStream, StreamEmptyError, StreamFullError, SyncObjectStream
 
 if typing.TYPE_CHECKING:
     from ._connection import SyncHttp2Connection
@@ -84,7 +84,7 @@ class SyncHttp2Stream(Http2Stream):
     _trailers_received: threading.Event
     _received_trailers: Optional[HeadersType]
 
-    _received_data_buffer: tuple[ReceivedData, queue.Queue]
+    _received_data_buffer: tuple[ReceivedData, SyncObjectStream[ReceivedData]]
 
     def __init__(self, connection: "SyncHttp2Connection", stream_id: int) -> None:
         # base attributes
@@ -101,7 +101,7 @@ class SyncHttp2Stream(Http2Stream):
         self._received_trailers: Optional[HeadersType] = None
 
         # received data buffer
-        self._received_data_buffer = (_DUMMY_RECEIVED_DATA, queue.Queue(maxsize=1000))
+        self._received_data_buffer = (_DUMMY_RECEIVED_DATA, SyncObjectStream(max_size=1000))
 
         self._event_dispatcher = {
             h2_events.RequestReceived: self._handle_request,
@@ -115,10 +115,10 @@ class SyncHttp2Stream(Http2Stream):
         }
 
         # Initialize local and remote exceptions
-        exc = None
+        self._local_exc = self._remote_exc = None
         if stream_id <= 0:
-            exc = H2StreamInactiveError(stream_id, "Stream is not initialized, please call `send_headers` first")
-        self._update_state(exc)
+            exc = H2StreamInactiveError(message="Stream is not initialized, please call `send_headers` first")
+            self._update_state(exc)
 
     def __enter__(self):
         """
@@ -162,36 +162,33 @@ class SyncHttp2Stream(Http2Stream):
           set both sides to the same exception.
         - If `exc` is a H2StreamClosedError, merge with current state and update accordingly.
         """
-        if not exc or isinstance(exc, H2StreamInactiveError):
+        if exc is None:
+            # Clear both local and remote exceptions
+            self._local_exc = self._remote_exc = None
+        elif isinstance(exc, H2StreamInactiveError):
+            # No initialization yet, set local exception only
             self._local_exc = exc
-            self._remote_exc = exc
-            return
-
         if isinstance(exc, H2StreamResetError):
-            self._local_exc = exc
-            self._remote_exc = exc
-
+            # Reset the stream, set local and remote exceptions
+            self._local_exc = self._remote_exc = exc
         elif isinstance(exc, H2StreamClosedError):
-            # Merge partial local/remote closed state with previous state
-            local_side = exc.local_side or isinstance(self._local_exc, H2StreamClosedError)
-            remote_side = exc.remote_side or isinstance(self._remote_exc, H2StreamClosedError)
+            if exc.local_side and exc.remote_side:
+                new_exc = exc
+            else:
+                # Merge partial local/remote closed state with previous state
+                local_side = exc.local_side or isinstance(self._local_exc, H2StreamInactiveError)
+                remote_side = exc.remote_side or isinstance(self._remote_exc, H2StreamInactiveError)
+                new_exc = H2StreamClosedError(self.stream_id, local_side, remote_side)
 
-            merged_exc = H2StreamClosedError(self._stream_id, local_side, remote_side)
-            if local_side:
-                self._local_exc = merged_exc
-            if remote_side:
-                self._remote_exc = merged_exc
+            self._local_exc = new_exc if new_exc.local_side else self._local_exc
+            self._remote_exc = new_exc if new_exc.remote_side else self._remote_exc
 
         # Unblock all waiting operations
         if self._remote_exc:
-            try:
-                self._headers_received.set()
-                self._trailers_received.set()
-                self._window_update.set()
-                self._received_data_buffer[1].put_nowait(None)
-            except queue.Full:
-                # Ignore if the queue is full
-                pass
+            self._headers_received.set()
+            self._trailers_received.set()
+            self._window_update.set()
+            self._received_data_buffer[1].stop()
 
         # Both sides are closed, unregister the stream
         if self._local_exc and self._remote_exc:
@@ -295,9 +292,6 @@ class SyncHttp2Stream(Http2Stream):
             ack_size: The size of the data to acknowledge.
 
         """
-        if self._local_exc:
-            raise self._local_exc
-
         h2_core = self._conn.h2_core
         h2_core.acknowledge_received_data(ack_size, self._stream_id)
 
@@ -397,7 +391,7 @@ class SyncHttp2Stream(Http2Stream):
         elif max_bytes == -1 and strict:
             raise ValueError("max_bytes cannot be -1 when strict is True")
 
-        prev_data, recv_queue = self._received_data_buffer
+        prev_data, recv_stream = self._received_data_buffer
         chunks: list[memoryview] = []
         total_ack = 0
         total_bytes = 0
@@ -423,7 +417,7 @@ class SyncHttp2Stream(Http2Stream):
                 if total_bytes > 0 and not strict:
                     # We have received some, and the pattern is not strict,
                     # only attempting to get more data non-blocking.
-                    next_data = recv_queue.get_nowait()
+                    next_data = recv_stream.get_nowait()
                 else:
                     # We have not received any data or have not obtained enough data,
                     # then we need to wait for the blockage.
@@ -438,9 +432,10 @@ class SyncHttp2Stream(Http2Stream):
                         if not exc:
                             total_ack = 0
 
-                    next_data = recv_queue.get(timeout=deadline.remaining())
-            except queue.Empty:
-                break
+                    next_data = recv_stream.get(timeout=deadline.remaining())
+            except (EndOfStream, StreamEmptyError):
+                # If the stream is empty or the stream is ended, we can exit
+                next_data = None
 
             # Step 4: Handle end-of-stream signal
             if next_data is None:
@@ -452,7 +447,7 @@ class SyncHttp2Stream(Http2Stream):
             raise self._remote_exc
 
         # Update internal buffer state
-        self._received_data_buffer = (prev_data, recv_queue)
+        self._received_data_buffer = (prev_data, recv_stream)
 
         # Send window update (ack) if needed
         if total_ack > 0:
@@ -489,10 +484,10 @@ class SyncHttp2Stream(Http2Stream):
         Handle the data received event.
         """
         # Update the received data buffer
-        recv_queue = self._received_data_buffer[1]
+        stream = self._received_data_buffer[1]
         try:
-            recv_queue.put_nowait(ReceivedData.from_h2(event))
-        except queue.Full:
+            stream.put_nowait(ReceivedData.from_h2(event))
+        except StreamFullError:
             logger.error(
                 "[H2Stream] Receive buffer full — dropping data. stream_id=%s, data_length=%d",
                 self._stream_id,

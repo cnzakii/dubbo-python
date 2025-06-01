@@ -36,14 +36,14 @@ def to_bytes(data: StrOrBytes, encoding=constants.UTF_8) -> bytes:
         result = to_bytes("hello")
         result = to_bytes(bytearray(b"data"))
     """
-    if isinstance(data, str):
-        return data.encode(encoding)
     if isinstance(data, bytes):
         return data
     if isinstance(data, bytearray):
         return bytes(data)
     if isinstance(data, memoryview):
         return data.tobytes()
+    if isinstance(data, str):
+        return data.encode(encoding)
 
     raise TypeError(f"Expected str, bytes, bytearray, or memoryview, got {type(data).__name__}")
 

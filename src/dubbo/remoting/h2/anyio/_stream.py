@@ -41,7 +41,7 @@ from dubbo.remoting.h2.exceptions import (
 from ._tracker import AsyncSendTracker
 
 if typing.TYPE_CHECKING:
-    from ._connection import AnyIOHttp2Connection
+    from ._connection import BaseHttp2Connection
 
 __all__ = ["AnyIOHttp2Stream"]
 
@@ -79,13 +79,13 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
     )
 
     _stream_id: int
-    _conn: "AnyIOHttp2Connection"
+    _conn: "BaseHttp2Connection"
 
     # some exceptions
     _local_exc: Optional[Exception]
     _remote_exc: Optional[Exception]
 
-    # flow control
+    # some send flags
     _window_update: anyio.Event
 
     # event dispatcher
@@ -107,7 +107,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         ReceivedData, MemoryObjectSendStream[ReceivedData], MemoryObjectReceiveStream[ReceivedData]
     ]
 
-    def __init__(self, connection: "AnyIOHttp2Connection", stream_id: int) -> None:
+    def __init__(self, connection: "BaseHttp2Connection", stream_id: int) -> None:
         """Initialize a new HTTP/2 stream.
 
         Args:
@@ -118,7 +118,7 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         self._conn = connection
         self._stream_id = stream_id
 
-        # flow control
+        # some send flags
         self._window_update = anyio.Event()
 
         # received headers and trailers
@@ -143,10 +143,10 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         }
 
         # Initialize local and remote exceptions
-        exc = None
+        self._local_exc = self._remote_exc = None
         if stream_id <= 0:
-            exc = H2StreamInactiveError(stream_id, "Stream is not initialized, please call `send_headers` first")
-        self._update_state(exc)
+            exc = H2StreamInactiveError(message="Stream is not initialized, please call `send_headers` first")
+            self._update_state(exc)
 
     async def __aenter__(self) -> "AnyIOHttp2Stream":
         """Enter the async context manager.
@@ -214,24 +214,26 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
         Args:
             exc: The exception that triggered the state change, or None to clear state.
         """
-        if not exc or isinstance(exc, H2StreamInactiveError):
+        if exc is None:
+            # Clear both local and remote exceptions
+            self._local_exc = self._remote_exc = None
+        elif isinstance(exc, H2StreamInactiveError):
+            # No initialization yet, set local exception only
             self._local_exc = exc
-            self._remote_exc = exc
-            return
-
         if isinstance(exc, H2StreamResetError):
+            # Reset the stream, set local and remote exceptions
             self._local_exc = self._remote_exc = exc
-
         elif isinstance(exc, H2StreamClosedError):
-            # Merge partial local/remote closed state with previous state
-            local_side = exc.local_side or isinstance(self._local_exc, H2StreamClosedError)
-            remote_side = exc.remote_side or isinstance(self._remote_exc, H2StreamClosedError)
+            if exc.local_side and exc.remote_side:
+                new_exc = exc
+            else:
+                # Merge partial local/remote closed state with previous state
+                local_side = exc.local_side or isinstance(self._local_exc, H2StreamInactiveError)
+                remote_side = exc.remote_side or isinstance(self._remote_exc, H2StreamInactiveError)
+                new_exc = H2StreamClosedError(self.stream_id, local_side, remote_side)
 
-            merged_exc = H2StreamClosedError(self._stream_id, local_side, remote_side)
-            if local_side:
-                self._local_exc = merged_exc
-            if remote_side:
-                self._remote_exc = merged_exc
+            self._local_exc = new_exc if new_exc.local_side else self._local_exc
+            self._remote_exc = new_exc if new_exc.remote_side else self._remote_exc
 
         # Unblock all waiting operations
         if self._remote_exc:
@@ -392,9 +394,6 @@ class AnyIOHttp2Stream(AsyncHttp2Stream):
             H2StreamInactiveError: If the stream is not initialized.
             H2ProtocolError: If other protocol violations occur.
         """
-        if self._local_exc:
-            raise self._local_exc
-
         h2_core = self._conn.h2_core
         h2_core.acknowledge_received_data(ack_size, self._stream_id)
 

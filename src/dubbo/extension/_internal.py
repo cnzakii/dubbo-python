@@ -19,8 +19,7 @@ from typing import Union
 
 from dubbo.cluster.loadbalance import LoadBalance
 from dubbo.compression import Compressor
-from dubbo.remoting.zookeeper import ZookeeperClient
-from dubbo.remoting.zookeeper.kazoo import AsyncKazooZookeeperClient
+from dubbo.remoting.zookeeper import AsyncZookeeperTransport, ZookeeperTransport
 
 
 @dataclass(frozen=True)
@@ -57,17 +56,17 @@ compressorRegistry = ExtensionRegistry(
     },
 )
 
-zkClientRegistry = ExtensionRegistry(
-    interface=ZookeeperClient,
+zkTransportRegistry = ExtensionRegistry(
+    interface=ZookeeperTransport,
     impls={
-        "kazoo": "dubbo.remoting.zookeeper.kazoo:KazooZookeeperClient",
+        "kazoo": "dubbo.remoting.zookeeper.kazoo:KazooTransport",
     },
 )
 
-asyncZkClientRegistry = ExtensionRegistry(
-    interface=AsyncKazooZookeeperClient,
+asyncZkTransportRegistry = ExtensionRegistry(
+    interface=AsyncZookeeperTransport,
     impls={
-        "kazoo": "dubbo.remoting.zookeeper.kazoo:AsyncKazooZookeeperClient",
+        "kazoo": "dubbo.remoting.zookeeper.kazoo:AsyncKazooTransport",
     },
 )
 

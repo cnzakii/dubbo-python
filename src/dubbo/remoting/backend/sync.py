@@ -54,9 +54,9 @@ __all__ = [
 ]
 
 # Generic type variables for stream and datagram handling
-_ItemT = TypeVar("_ItemT", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
-_DatagramT = TypeVar("_DatagramT", bound=Union[UDPPacketType, UNIXDatagramPacketType])
-_DatagramHandlerT = Callable[[NetworkStream[_DatagramT], _DatagramT], None]
+_T_Item = TypeVar("_T_Item", bound=Union[bytes, UDPPacketType, UNIXDatagramPacketType])
+_T_Datagram = TypeVar("_T_Datagram", bound=Union[UDPPacketType, UNIXDatagramPacketType])
+_T_DatagramHandler = Callable[[NetworkStream[_T_Datagram], _T_Datagram], None]
 
 
 def _with_timeout(sock: socket.socket, timeout: Optional[float], op: Callable[[], Any]) -> Any:
@@ -92,7 +92,7 @@ def _wrapper_tls(
     )
 
 
-class SyncStream(NetworkStream[_ItemT], Generic[_ItemT]):
+class SyncStream(NetworkStream[_T_Item], Generic[_T_Item]):
     """Synchronous NetworkStream implementation using blocking sockets.
 
     Supports both connected (TCP) and unconnected (UDP/Unix datagram) modes.
@@ -105,7 +105,7 @@ class SyncStream(NetworkStream[_ItemT], Generic[_ItemT]):
         self._sock = sock
         self._connected = connected
 
-    def _do_send(self, item: _ItemT) -> None:
+    def _do_send(self, item: _T_Item) -> None:
         """Perform send operation based on connection mode."""
         if self._connected:
             assert isinstance(item, bytes), "Connected streams require bytes data"
@@ -115,20 +115,20 @@ class SyncStream(NetworkStream[_ItemT], Generic[_ItemT]):
             data, addr = item
             self._sock.sendto(data, addr)
 
-    def send(self, item: _ItemT, timeout: Optional[float] = None) -> None:
+    def send(self, item: _T_Item, timeout: Optional[float] = None) -> None:
         """Send item with optional timeout."""
         exc_map: ExceptionMapping = {socket.timeout: SendTimeout, OSError: SendError}
         with map_exceptions(exc_map):
             _with_timeout(self._sock, timeout, lambda: self._do_send(item))
 
-    def _do_receive(self, max_bytes: int) -> _ItemT:
+    def _do_receive(self, max_bytes: int) -> _T_Item:
         """Perform receive operation based on connection mode."""
         if self._connected:
-            return cast(_ItemT, self._sock.recv(max_bytes))
+            return cast(_T_Item, self._sock.recv(max_bytes))
         else:
-            return cast(_ItemT, self._sock.recvfrom(max_bytes))
+            return cast(_T_Item, self._sock.recvfrom(max_bytes))
 
-    def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: Optional[float] = None) -> _ItemT:
+    def receive(self, *, max_bytes: int = DEFAULT_MAX_BYTES, timeout: Optional[float] = None) -> _T_Item:
         """Receive item with optional timeout."""
         exc_map: ExceptionMapping = {socket.timeout: ReceiveTimeout, OSError: ReceiveError}
         with map_exceptions(exc_map):
@@ -228,7 +228,7 @@ class SyncStreamServer(NetworkServer[NetworkStream[bytes], StreamHandlerType], T
 
 
 class SyncDatagramServer(
-    NetworkServer[NetworkStream[_DatagramT], _DatagramHandlerT[_DatagramT]], ThreadingUDPServer, Generic[_DatagramT]
+    NetworkServer[NetworkStream[_T_Datagram], _T_DatagramHandler[_T_Datagram]], ThreadingUDPServer, Generic[_T_Datagram]
 ):
     """Synchronous UDP/Unix datagram server using ThreadingUDPServer."""
 
@@ -237,7 +237,7 @@ class SyncDatagramServer(
     def __init__(
         self, server_address: Any, *, reuse_port: bool = False, reuse_addr: bool = False, family: socket.AddressFamily
     ) -> None:
-        self._handler: Optional[_DatagramHandlerT[_DatagramT]] = None
+        self._handler: Optional[_T_DatagramHandler[_T_Datagram]] = None
         self.allow_reuse_port = reuse_port
         self.allow_reuse_address = reuse_addr
         self.address_family = family
@@ -251,12 +251,12 @@ class SyncDatagramServer(
         data, sock = request
 
         # Create datagram stream and call handler
-        net_stream: NetworkStream[_DatagramT] = SyncStream(sock, connected=False)
+        net_stream: NetworkStream[_T_Datagram] = SyncStream(sock, connected=False)
 
         assert self._handler is not None, "Datagram handler must be set before serving"
         self._handler(net_stream, (data, client_address))  # type: ignore
 
-    def serve(self, handler: _DatagramHandlerT[_DatagramT]) -> None:
+    def serve(self, handler: _T_DatagramHandler[_T_Datagram]) -> None:
         """Start serving with the specified handler (blocks indefinitely)."""
         self._handler = handler
         self.serve_forever()
