@@ -13,9 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
+from contextlib import AsyncExitStack
+from types import TracebackType
+from typing import Optional, cast
 
 import anyio
+from anyio import abc as anyio_abc
 from h2.config import H2Configuration
 
 from dubbo.common import URL, constants
@@ -30,49 +33,65 @@ from dubbo.remoting.backend import (
     AsyncStreamHandlerType,
 )
 from dubbo.remoting.backend.exceptions import ConnectTimeout
-from dubbo.remoting.h2 import (
+
+from ..base import (
     AsyncHttp2Client,
     AsyncHttp2ConnectionHandlerType,
     AsyncHttp2Server,
     AsyncHttp2StreamHandlerType,
     AsyncHttp2Transport,
 )
+from .connection import AnyIOH2Connection
 
-from ._connection import AnyIOHttp2Connection
-
-__all__ = ["AnyIOHttp2Client", "AnyIOHttp2Server", "AnyIOHttp2Transport"]
-
+__all__ = ["AnyIOH2Client", "AnyIOH2Server", "AnyIOH2Transport"]
 
 _ServerType: TypeAlias = AsyncNetworkServer[AsyncNetworkStream[bytes], AsyncStreamHandlerType]
 
 
-class AnyIOHttp2Client(AsyncHttp2Client, AnyIOHttp2Connection):
-    """An HTTP/2 client connection using AnyIO."""
+class AnyIOH2Client(AsyncHttp2Client, AnyIOH2Connection):
+    """
+    An AnyIO-based HTTP/2 client implementation.
+    """
 
-    def __init__(self, net_stream: AsyncNetworkStream):
-        super().__init__(net_stream, H2Configuration(client_side=True, validate_inbound_headers=False))
+    _stack: AsyncExitStack
 
-    async def __aenter__(self) -> "AnyIOHttp2Client":
-        await AnyIOHttp2Connection.__aenter__(self)
+    def __init__(self, net_stream: AsyncNetworkStream[bytes]) -> None:
+        super().__init__(
+            task_group=anyio.create_task_group(),
+            net_stream=net_stream,
+            h2_config=H2Configuration(client_side=True, validate_inbound_headers=False),
+        )
+        self._stack = AsyncExitStack()
+
+    async def __aenter__(self):
+        await self._stack.__aenter__()
+        await self._stack.enter_async_context(self._tg)
+        self._stack.callback(self._tg.cancel_scope.cancel)
+        await super().__aenter__()
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
-        await AnyIOHttp2Connection.__aexit__(self, exc_type, exc_value, traceback)
+    async def __aexit__(
+        self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[TracebackType]
+    ) -> None:
+        await super().__aexit__(exc_type, exc_value, traceback)
+        await self._stack.__aexit__(exc_type, exc_value, traceback)
 
 
-class AnyIOHttp2Server(AsyncHttp2Server):
-    """An HTTP/2 server connection using AnyIO."""
+class AnyIOH2Server(AsyncHttp2Server):
+    """
+    An AnyIO-based HTTP/2 server implementation.
+    """
 
-    __slots__ = ("_server", "_connection_handler", "_stream_handler")
+    __slots__ = ("_server", "_tg", "_connection_handler", "_stream_handler")
 
     _server: _ServerType
-
+    _tg: Optional[anyio_abc.TaskGroup]
     _connection_handler: Optional[AsyncHttp2ConnectionHandlerType]
-
     _stream_handler: Optional[AsyncHttp2StreamHandlerType]
 
     def __init__(self, server: _ServerType) -> None:
         self._server = server
+        self._tg = None
         self._connection_handler = None
         self._stream_handler = None
 
@@ -82,7 +101,12 @@ class AnyIOHttp2Server(AsyncHttp2Server):
         Args:
             stream: The network stream to wrap.
         """
-        async with AnyIOHttp2Connection(
+        if self._tg is None:
+            logger.error("Task group is not initialized. Cannot handle incoming stream.")
+            return
+
+        async with AnyIOH2Connection(
+            task_group=self._tg,
             net_stream=stream,
             h2_config=H2Configuration(client_side=False, validate_inbound_headers=False),
             stream_handler=self._stream_handler,
@@ -92,8 +116,7 @@ class AnyIOHttp2Server(AsyncHttp2Server):
                 await self._connection_handler(conn)
 
             # wait until the connection is closed
-            await conn.wait_until_closed()
-            logger.debug("HTTP/2 Connection closed: %s", stream.get_extra_info("remote_address"))
+            await cast(AnyIOH2Connection, conn).wait_closed()
 
     async def serve(
         self,
@@ -108,13 +131,24 @@ class AnyIOHttp2Server(AsyncHttp2Server):
         """
         self._stream_handler = stream_handler
         self._connection_handler = connection_handler
-        await self._server.serve(self._net_stream_wrapper)
+
+        async with AsyncExitStack() as stack:
+            self._tg = await stack.enter_async_context(anyio.create_task_group())
+            await self._server.serve(self._net_stream_wrapper)
+
+    async def aclose(self) -> None:
+        """Close the server and release resources."""
+        if self._server:
+            await self._server.aclose()
+            logger.info("HTTP/2 server closed")
+        else:
+            logger.warning("Attempted to close an uninitialized HTTP/2 server")
 
 
 _DEFAULT_CONNECTION_TIMEOUT = 10.0  # seconds
 
 
-class AnyIOHttp2Transport(AsyncHttp2Transport):
+class AnyIOH2Transport(AsyncHttp2Transport):
     """An HTTP/2 transport implementation using AnyIO."""
 
     __slots__ = ("_backend",)
@@ -124,7 +158,7 @@ class AnyIOHttp2Transport(AsyncHttp2Transport):
     def __init__(self):
         self._backend = AnyIOBackend()
 
-    async def connect(self, url: URL) -> AnyIOHttp2Client:
+    async def connect(self, url: URL) -> AnyIOH2Client:
         """Connects to the given URL and returns an HTTP/2 client connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
@@ -134,11 +168,11 @@ class AnyIOHttp2Transport(AsyncHttp2Transport):
         with map_exceptions(exc_map):
             with anyio.fail_after(timeout):
                 net_stream = await self._backend.connect_tcp(url.host, url.port)
-                client = AnyIOHttp2Client(net_stream)
+                client = AnyIOH2Client(net_stream)
                 logger.info("HTTP/2 connection established to %s", net_stream.get_extra_info("remote_address"))
                 return client
 
-    async def bind(self, url: URL) -> AnyIOHttp2Server:
+    async def bind(self, url: URL) -> AnyIOH2Server:
         """Binds to the given URL and returns an HTTP/2 server connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
@@ -149,4 +183,4 @@ class AnyIOHttp2Transport(AsyncHttp2Transport):
             with anyio.fail_after(timeout):
                 server = await self._backend.create_tcp_server(local_host=url.host, local_port=url.port)
                 logger.info("HTTP/2 server bound to %s", url.location)
-                return AnyIOHttp2Server(server)
+                return AnyIOH2Server(server)

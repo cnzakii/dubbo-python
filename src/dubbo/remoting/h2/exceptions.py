@@ -34,7 +34,7 @@ class H2ConnectionError(ConnectError):
     __slots__ = ()
 
 
-class H2ConnectionTerminatedError(H2ProtocolError):
+class H2ConnectionTerminatedError(H2ProtocolError, H2ConnectionError):
     """Raised when HTTP/2 connection is terminated via GOAWAY frame."""
 
     __slots__ = ("error_code", "last_stream_id", "additional_data", "remote_termination")

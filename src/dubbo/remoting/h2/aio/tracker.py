@@ -13,11 +13,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Generic, Optional, TypeVar
+import asyncio
+from typing import Callable, Generic, Optional, TypeVar, Union
 
 import anyio
 
-__all__ = ["AsyncSendTracker", "dummy_tracker"]
+__all__ = [
+    "AsyncSendTracker",
+    "AioSendTracker",
+    "AnyIOSendTracker",
+]
+
 
 _Result = TypeVar("_Result")
 
@@ -48,13 +54,15 @@ class AsyncSendTracker(Generic[_Result]):
 
     __slots__ = ("_event", "_result", "_exc", "_send_func", "_no_wait")
 
-    _event: anyio.Event
+    _event: Union[asyncio.Event, anyio.Event]
     _result: Optional[_Result]
     _exc: Optional[Exception]
     _send_func: Callable[[], _Result]
     _no_wait: bool
 
-    def __init__(self, send_func: Callable[[], _Result], no_wait: bool = False) -> None:
+    def __init__(
+        self, event: Union[asyncio.Event, anyio.Event], send_func: Callable[[], _Result], no_wait: bool = False
+    ) -> None:
         """Initialize the tracker with a data generation function.
 
         Args:
@@ -62,7 +70,7 @@ class AsyncSendTracker(Generic[_Result]):
             no_wait: If True, the tracker completes immediately after triggering,
                     without waiting for explicit completion.
         """
-        self._event = anyio.Event()
+        self._event = event
         self._result = None
         self._exc = None
         self._send_func = send_func
@@ -134,5 +142,15 @@ class AsyncSendTracker(Generic[_Result]):
         return self._exc
 
 
-# Pre-configured tracker that completes immediately and returns None
-dummy_tracker = AsyncSendTracker(lambda: None, no_wait=True)
+class AioSendTracker(AsyncSendTracker[_Result]):
+    """syncSendTracker specialization using asyncio.Event."""
+
+    def __init__(self, send_func: Callable[[], _Result], no_wait: bool = False) -> None:
+        super().__init__(asyncio.Event(), send_func, no_wait)
+
+
+class AnyIOSendTracker(AsyncSendTracker[_Result]):
+    """AsyncSendTracker specialization using anyio.Event."""
+
+    def __init__(self, send_func: Callable[[], _Result], no_wait: bool = False) -> None:
+        super().__init__(anyio.Event(), send_func, no_wait)

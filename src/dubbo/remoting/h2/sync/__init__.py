@@ -14,14 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._connection import SyncHttp2Connection
-from ._stream import SyncHttp2Stream
-from ._transport import SyncHttp2Client, SyncHttp2Server, SyncHttp2Transport
+from .stream import SyncHttp2Stream
+from .transport import SyncHttp2Client, SyncHttp2Server, SyncHttp2Transport
 
 __all__ = [
+    "SyncHttp2Stream",
     "SyncHttp2Client",
     "SyncHttp2Server",
     "SyncHttp2Transport",
-    "SyncHttp2Connection",
-    "SyncHttp2Stream",
 ]

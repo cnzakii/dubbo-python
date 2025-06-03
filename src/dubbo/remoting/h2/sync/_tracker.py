@@ -17,7 +17,7 @@ import threading
 import time
 from typing import Callable, Generic, Optional, TypeVar, overload
 
-__all__ = ["Deadline", "SendTracker", "dummy_tracker"]
+__all__ = ["Deadline", "SendTracker"]
 
 
 class Deadline:
@@ -229,7 +229,3 @@ class SendTracker(Generic[_T_Result]):
         """
         self._event.wait(timeout=self.remaining_time)
         return self._exc
-
-
-# A pre-completed SendTracker that does nothing.
-dummy_tracker = SendTracker(lambda: None, no_wait=True)

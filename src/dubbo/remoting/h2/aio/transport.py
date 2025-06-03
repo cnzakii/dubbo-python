@@ -15,6 +15,7 @@
 # limitations under the License.
 import asyncio
 from contextlib import AsyncExitStack
+from types import TracebackType
 from typing import Optional
 
 import anyio
@@ -26,17 +27,17 @@ from dubbo.common import URL, constants
 from dubbo.exceptions import ExceptionMapping, map_exceptions
 from dubbo.logger import logger
 from dubbo.remoting.backend.exceptions import ConnectError, ConnectTimeout
-from dubbo.remoting.h2 import (
+
+from ..base import (
     AsyncHttp2Client,
     AsyncHttp2ConnectionHandlerType,
     AsyncHttp2Server,
     AsyncHttp2StreamHandlerType,
     AsyncHttp2Transport,
 )
+from .protocol import Http2Protocol
 
-from ._protocol import Http2Protocol
-
-__all__ = ["AioHttp2Client", "AioOHttp2Server", "AioHttp2Transport"]
+__all__ = ["AioHttp2Client", "AioHttp2Server", "AioHttp2Transport"]
 
 
 def get_running_loop() -> asyncio.AbstractEventLoop:
@@ -48,48 +49,34 @@ def get_running_loop() -> asyncio.AbstractEventLoop:
 
 
 class AioHttp2Client(AsyncHttp2Client, Http2Protocol):
-    """An HTTP/2 client connection using AsyncIO."""
-
-    __slots__ = ("_stack",)
+    """An HTTP/2 client using asyncio for asynchronous operations."""
 
     _stack: AsyncExitStack
 
     def __init__(self):
-        super().__init__(H2Configuration(client_side=True, validate_inbound_headers=False))
+        super().__init__(
+            task_group=anyio.create_task_group(),
+            h2_config=H2Configuration(client_side=True, validate_inbound_headers=False),
+        )
         self._stack = AsyncExitStack()
 
     async def __aenter__(self):
-        """Enter the context manager, returning the client instance."""
-        await self._stack.__aenter__()
-        await self._stack.enter_async_context(self.task_group)
-        self._stack.callback(self.task_group.cancel_scope.cancel)
+        """Enter the async context, initializing resources."""
+        await self._stack.enter_async_context(self._tg)
+        self._stack.callback(self._tg.cancel_scope.cancel)
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        """Exit the context manager, cleaning up resources."""
-        if not self._closed_event.is_set():
-            try:
-                await self.aclose()
-            except Exception:
-                # Ignore errors during graceful closure in exit context
-                pass
-            finally:
-                self._finalize(exc=exc_value)
-
-        if self._transport and not self._transport.is_closing():
-            try:
-                self._transport.close()
-            except Exception:
-                # Ignore errors during transport closure
-                pass
-
-        return await self._stack.__aexit__(exc_type, exc_value, traceback)
+    async def __aexit__(
+        self, exc_type: Optional[type], exc_value: Optional[BaseException], traceback: Optional[TracebackType]
+    ) -> None:
+        await super().__aexit__(exc_type, exc_value, traceback)
+        await self._stack.__aexit__(exc_type, exc_value, traceback)
 
 
-class AioOHttp2Server(AsyncHttp2Server):
+class AioHttp2Server(AsyncHttp2Server):
     """An HTTP/2 server connection using AsyncIO."""
 
-    __slots__ = ("listener", "_connection_handler", "_stream_handler")
+    __slots__ = ("listener", "_connection_handler", "_stream_handler", "_tg")
 
     listener: Optional[asyncio.AbstractServer]
 
@@ -101,6 +88,7 @@ class AioOHttp2Server(AsyncHttp2Server):
         self.listener: Optional[asyncio.AbstractServer] = None
         self._connection_handler = None
         self._stream_handler = None
+        self._tg = None
 
     def _protocol_factory(self) -> Http2Protocol:
         """Factory method to create an HTTP/2 protocol instance."""
@@ -132,6 +120,15 @@ class AioOHttp2Server(AsyncHttp2Server):
             self._tg = tg
             await self.listener.serve_forever()
 
+    async def aclose(self) -> None:
+        """Close the server asynchronously."""
+        if self.listener is not None:
+            self.listener.close()
+            await self.listener.wait_closed()
+            logger.info("HTTP/2 server closed")
+        else:
+            logger.warning("Attempted to close an uninitialized HTTP/2 server")
+
 
 _DEFAULT_CONNECTION_TIMEOUT = 10.0  # seconds
 
@@ -146,7 +143,7 @@ class AioHttp2Transport(AsyncHttp2Transport):
         exc_map: ExceptionMapping = {
             TimeoutError: ConnectTimeout,
             ConnectionRefusedError: ConnectError,
-            ConnectError: ConnectError,
+            ConnectionError: ConnectError,
         }
         with map_exceptions(exc_map):
             with anyio.fail_after(timeout):
@@ -157,9 +154,9 @@ class AioHttp2Transport(AsyncHttp2Transport):
                 )
                 return client
 
-    async def bind(self, url: URL) -> AioOHttp2Server:
+    async def bind(self, url: URL) -> AioHttp2Server:
         """Binds to the given URL and returns an HTTP/2 server connection."""
-        server = AioOHttp2Server()
+        server = AioHttp2Server()
         listener = await get_running_loop().create_server(
             protocol_factory=server._protocol_factory,
             host=url.host,

@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
+from typing import Optional, cast
 
 from h2.config import H2Configuration
 
@@ -21,15 +21,15 @@ from dubbo.common import URL, constants
 from dubbo.common.types import TypeAlias
 from dubbo.logger import logger
 from dubbo.remoting.backend import NetworkBackend, NetworkServer, NetworkStream, StreamHandlerType, SyncBackend
-from dubbo.remoting.h2 import (
+
+from ..base import (
     Http2Client,
     Http2ConnectionHandlerType,
     Http2Server,
     Http2StreamHandlerType,
     Http2Transport,
 )
-
-from ._connection import SyncHttp2Connection
+from .connection import SyncHttp2Connection
 
 __all__ = ["SyncHttp2Client", "SyncHttp2Server", "SyncHttp2Transport"]
 
@@ -38,14 +38,9 @@ _ServerType: TypeAlias = NetworkServer[NetworkStream[bytes], StreamHandlerType]
 
 class SyncHttp2Client(Http2Client, SyncHttp2Connection):
     def __init__(self, net_stream: NetworkStream):
-        super().__init__(net_stream, H2Configuration(client_side=True, validate_inbound_headers=False))
-
-    def __enter__(self) -> "SyncHttp2Client":
-        SyncHttp2Connection.__enter__(self)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        SyncHttp2Connection.__exit__(self, exc_type, exc_value, traceback)
+        super().__init__(
+            net_stream=net_stream, h2_config=H2Configuration(client_side=True, validate_inbound_headers=False)
+        )
 
 
 class SyncHttp2Server(Http2Server):
@@ -74,8 +69,7 @@ class SyncHttp2Server(Http2Server):
                 self._connection_handler(conn)
 
             # wait until the connection is closed
-            conn.wait_until_closed()
-            logger.debug("HTTP/2 Connection closed: %s", stream.get_extra_info("remote_address"))
+            cast(SyncHttp2Connection, conn).wait_closed()
 
     def serve(
         self,
@@ -88,6 +82,14 @@ class SyncHttp2Server(Http2Server):
         self._connection_handler = connection_handler
         self._stream_handler = stream_handler
         self._server.serve(self._net_stream_wrapper)
+
+    def close(self) -> None:
+        """Close the server and release resources."""
+        if self._server:
+            self._server.close()
+            logger.info("HTTP/2 server closed.")
+        else:
+            logger.warning("Attempted to close an uninitialized HTTP/2 server")
 
 
 _DEFAULT_CONNECTION_TIMEOUT = 10.0  # seconds

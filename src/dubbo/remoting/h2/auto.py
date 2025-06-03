@@ -13,22 +13,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import sniffio
 
 from dubbo.common import URL
-from dubbo.remoting.h2 import (
-    AsyncHttp2Client,
-    AsyncHttp2Server,
-    AsyncHttp2Transport,
-)
 
-__all__ = ["AutoHttp2Transport"]
+from .base import AsyncHttp2Client, AsyncHttp2Server, AsyncHttp2Transport
 
 
 class AutoHttp2Transport(AsyncHttp2Transport):
     """
-    AutoHttp2Transport automatically selects the appropriate HTTP/2 transport
+    AutoH2Transport automatically selects the appropriate HTTP/2 transport
     implementation based on the current async backend in use.
     """
 
@@ -43,9 +37,9 @@ class AutoHttp2Transport(AsyncHttp2Transport):
 
             self._transport = AioHttp2Transport()
         else:
-            from .any import AnyIOHttp2Transport
+            from .anyio import AnyIOH2Transport
 
-            self._transport = AnyIOHttp2Transport()
+            self._transport = AnyIOH2Transport()
 
     async def connect(self, url: URL) -> AsyncHttp2Client:
         """Connects to the given URL and returns an HTTP/2 client connection."""

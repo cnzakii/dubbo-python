@@ -174,12 +174,8 @@ class AnyIOStreamServer(AsyncNetworkServer[AsyncNetworkStream[bytes], AsyncStrea
         Args:
             stream: The raw AnyIO ByteStream to wrap and pass to handler.
         """
-        try:
-            assert self._handler is not None, "Handler must be set before serving"
-            await self._handler(AnyIOStream(stream))
-        except Exception:
-            await stream.aclose()
-            raise
+        assert self._handler is not None, "Handler must be set before serving"
+        await self._handler(AnyIOStream(stream))
 
     async def serve(self, handler: AsyncStreamHandlerType) -> None:
         """Start serving with the specified handler (blocks indefinitely)."""

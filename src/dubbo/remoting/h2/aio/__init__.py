@@ -14,6 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._transport import AioHttp2Transport
+from .stream import AioHttp2Stream
+from .transport import AioHttp2Client, AioHttp2Server, AioHttp2Transport
 
-__all__ = ["AioHttp2Transport"]
+__all__ = [
+    "AioHttp2Stream",
+    "AioHttp2Client",
+    "AioHttp2Server",
+    "AioHttp2Transport",
+]
