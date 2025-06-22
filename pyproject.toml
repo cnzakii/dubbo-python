@@ -56,11 +56,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "anyio>=4.9.0",
-    "h2>=4.1.0",
-    "psutil>=6.0.0",
-    "sniffio>=1.3.1",
-    "typing-extensions>=4.13.2; python_version < '3.10'",
+    "anyio~=4.9.0",
+    "h2~=4.2.0",
+    "psutil~=7.0.0",
+    "sniffio~=1.3.1",
+    "typing-extensions~=4.14.0; python_version < '3.10'",
 ]
 
 
@@ -71,25 +71,24 @@ Repository = "https://github.com/apache/dubbo-python"
 Issues = "https://github.com/apache/dubbo/issues"
 
 [project.optional-dependencies]
-zookeeper = [
-    "kazoo>=2.10.0",
-]
-
+zookeeper = ["kazoo~=2.10.0"]
+uvloop = ["uvloop~=0.21.0; sys_platform != 'win32'"]
+pydantic = ["pydantic~=2.11.7"]
+protobuf = ["protobuf~=6.31.1"]
 
 [dependency-groups]
 build = [
-    "hatch>=1.14.1",
-    "hatch-fancy-pypi-readme>=25.1.0",
+    "hatch~=1.14.1",
+    "hatch-fancy-pypi-readme~=25.1.0",
 ]
 dev = [
-    "pre-commit>=4.2.0",
-    "ruff>=0.11.10",
-    "mypy>=1.15.0",
-    "pytest>=8.3.5",
-    "pytest-cov>=6.1.1",
-    "pytest-mock>=3.14.1",
+    "pre-commit~=4.2.0",
+    "ruff~=0.12.0",
+    "mypy~=1.16.0",
+    "pytest~=8.4.0",
+    "pytest-cov~=6.2.1",
+    "pytest-mock~=3.14.1",
 ]
-
 
 
 # ------------- Hatch settings -------------
@@ -121,7 +120,7 @@ replacement = 'src="https://raw.githubusercontent.com/apache/dubbo-python/main/\
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
 # Replace relative links with absolute ones
-pattern     = "\\[([^\\]]+)\\]\\((docs/[^)]+)\\)"
+pattern = "\\[([^\\]]+)\\]\\((docs/[^)]+)\\)"
 replacement = "[$1](https://github.com/apache/dubbo-python/blob/main/$2)"
 
 # ------------- Ruff settings -------------

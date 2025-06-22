@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import enum
 import threading
 
 
@@ -36,3 +37,13 @@ class SingletonBase:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
+
+
+@enum.unique
+class CallType(enum.StrEnum):
+    """Enumeration for Call types."""
+
+    UNARY = "unary"
+    CLIENT_STREAM = "client_stream"
+    SERVER_STREAM = "server_stream"
+    BI_STREAM = "bi_stream"

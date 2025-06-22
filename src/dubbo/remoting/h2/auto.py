@@ -37,9 +37,9 @@ class AutoHttp2Transport(AsyncHttp2Transport):
 
             self._transport = AioHttp2Transport()
         else:
-            from .anyio import AnyIOH2Transport
+            from .anyio import AnyIOHttp2Transport
 
-            self._transport = AnyIOH2Transport()
+            self._transport = AnyIOHttp2Transport()
 
     async def connect(self, url: URL) -> AsyncHttp2Client:
         """Connects to the given URL and returns an HTTP/2 client connection."""

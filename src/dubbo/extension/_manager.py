@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Final
+from typing import Final, Optional
 
 from ._loader import ExtensionLoader
 from .exceptions import ExtensionError
@@ -53,9 +53,11 @@ class ExtensionManager:
         Raises:
             ExtensionError: If no loader is registered for the interface
         """
-        if interface not in self._loaders:
+        loader: Optional[ExtensionLoader] = self._loaders.get(interface, None)
+        if loader is None:
+            # If the interface is not found, raise an error
             raise ExtensionError(f"No ExtensionLoader registered for interface '{interface.__name__}'.")
-        return self._loaders[interface]
+        return loader
 
     def list_names(self, interface: type) -> list[str]:
         """List all registered implementation names for an interface.
@@ -87,20 +89,3 @@ class ExtensionManager:
                 if the named implementation is not found
         """
         return self.get_loader(interface).load_class(name)
-
-    def create_instance(self, interface: type, name: str, *args, **kwargs) -> Any:
-        """Create an instance of the specified implementation.
-
-        Args:
-            interface: The interface type to create an implementation for
-            name: Name of the registered implementation to instantiate
-            *args: Positional arguments to pass to the constructor
-            **kwargs: Keyword arguments to pass to the constructor
-
-        Returns:
-            An instance of the implementation
-
-        Example:
-            compressor = manager.create_instance(Compressor, "gzip", level=9)
-        """
-        return self.get_loader(interface).create_instance(name, *args, **kwargs)

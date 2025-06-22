@@ -16,7 +16,7 @@
 import pytest
 
 from dubbo.common import constants
-from dubbo.common.utils.common import to_bytes, to_str
+from dubbo.common.utils.common_utils import to_bytes, to_str
 
 
 class TestToBytes:

@@ -13,18 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import sys
 from ipaddress import IPv4Address, IPv6Address
 from typing import Union
 
-# some compat code
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias
-else:
-    from typing_extensions import TypeAlias
-
-
-__all__ = ["TypeAlias", "StrOrBytes", "BytesLike", "HostLike"]
+__all__ = ["StrOrBytes", "BytesLike", "HostLike"]
 
 
 StrOrBytes = Union[str, bytes, bytearray, memoryview]

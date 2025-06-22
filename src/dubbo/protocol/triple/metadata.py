@@ -18,6 +18,7 @@ import enum
 from .grpc.constants import MetadataName
 
 
+@enum.unique
 class TriMetadataName(enum.StrEnum):
     """
     Metadata keys used in Triple protocol,

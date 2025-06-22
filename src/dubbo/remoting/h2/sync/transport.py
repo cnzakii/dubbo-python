@@ -16,9 +16,9 @@
 from typing import Optional, cast
 
 from h2.config import H2Configuration
+from typing_extensions import TypeAlias
 
 from dubbo.common import URL, constants
-from dubbo.common.types import TypeAlias
 from dubbo.logger import logger
 from dubbo.remoting.backend import NetworkBackend, NetworkServer, NetworkStream, StreamHandlerType, SyncBackend
 

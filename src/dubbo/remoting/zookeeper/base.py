@@ -87,6 +87,7 @@ class ZookeeperClient(abc.ABC):
         """
         raise NotImplementedError()
 
+    @property
     @abc.abstractmethod
     def connected(self) -> bool:
         """
@@ -310,6 +311,7 @@ class AsyncZookeeperClient(abc.ABC):
     async def start(self) -> None:
         raise NotImplementedError()
 
+    @property
     @abc.abstractmethod
     def connected(self) -> bool:
         raise NotImplementedError()

@@ -75,11 +75,13 @@ class Invocation(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def arguments(self) -> list[Any]:
-        """Gets the argument list passed to the method invocation.
+    def arguments(self) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Gets the (args, kwargs) passed to the method invocation.
 
         Returns:
-            list[Any]: A list of arguments.
+            tuple[tuple[Any, ...], dict[str, Any]]: A tuple containing:
+                - args: A tuple of positional arguments.
+                - kwargs: A dictionary of keyword arguments.
         """
         raise NotImplementedError()
 

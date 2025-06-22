@@ -18,6 +18,7 @@ import enum
 __all__ = ["PseudoHeaderName", "Http2ErrorCode", "Http2SettingCode"]
 
 
+@enum.unique
 class PseudoHeaderName(enum.StrEnum):
     """
     Pseudo header names for HTTP/2.
@@ -41,6 +42,7 @@ class PseudoHeaderName(enum.StrEnum):
     STATUS = ":status"
 
 
+@enum.unique
 class Http2ErrorCode(enum.IntEnum):
     """
     Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY frames
@@ -92,6 +94,7 @@ class Http2ErrorCode(enum.IntEnum):
     HTTP_1_1_REQUIRED = 0xD
 
 
+@enum.unique
 class Http2SettingCode(enum.IntEnum):
     """
     The settings are used to communicate configuration parameters that affect how endpoints communicate.

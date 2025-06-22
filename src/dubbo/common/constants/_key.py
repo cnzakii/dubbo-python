@@ -21,6 +21,7 @@ HOST_KEY = "host"
 PORT_KEY = "port"
 PATH_KEY = "path"
 
+SERVICE_KEY = "service"
 INTERFACE_KEY = "interface"
 METHODS_KEY = "methods"
 METHOD_KEY = "method"

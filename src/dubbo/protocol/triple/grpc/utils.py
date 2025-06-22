@@ -23,7 +23,7 @@ from urllib import parse as url_parse
 
 from dubbo.common import constants
 from dubbo.common.types import BytesLike
-from dubbo.common.utils import common as common_utils
+from dubbo.common.utils import common_utils
 
 __all__ = [
     "encode_timeout",

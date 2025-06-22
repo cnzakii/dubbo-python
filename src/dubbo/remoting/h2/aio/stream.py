@@ -102,6 +102,7 @@ class AioHttp2Stream(AsyncHttp2Stream):
             h2_events.TrailersReceived: self._handle_trailers_received,
             h2_events.DataReceived: self._handle_data_received,
             h2_events.StreamEnded: self._handle_stream_ended,
+            h2_events.WindowUpdated: self._handle_window_update,
             h2_events.StreamReset: self._handle_stream_reset,
         }
 

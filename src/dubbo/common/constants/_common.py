@@ -19,3 +19,7 @@ DUBBO = "dubbo"
 UTF_8 = "utf-8"
 US_ASCII = "ascii"
 PROTOCOL_SEPARATOR = "://"
+
+CALL_TYPE = "call-type"
+
+SERIALIZATION_TYPE = "serialization-type"

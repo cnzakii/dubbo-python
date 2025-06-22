@@ -21,19 +21,3 @@ class RpcError(Exception):
     """
 
     pass
-
-
-class TripleError(RpcError):
-    """
-    Base class for all Triple protocol-related exceptions.
-    """
-
-    pass
-
-
-class EndOfStream(TripleError):
-    """
-    Exception raised when the end of stream is reached.
-    """
-
-    pass

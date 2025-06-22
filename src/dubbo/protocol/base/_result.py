@@ -117,7 +117,7 @@ class AsyncResult(abc.ABC, Generic[_T]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def set_value(self, value: _T) -> None:
+    def set_value(self, value: _T) -> None:
         """Asynchronously sets the invocation result value.
 
         Args:
@@ -126,16 +126,17 @@ class AsyncResult(abc.ABC, Generic[_T]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def get_exception(self) -> Exception:
+    async def get_exception(self) -> Optional[Exception]:
         """Asynchronously gets the exception (error) from the invocation, if any.
 
         Returns:
-            Exception: The exception raised during invocation, or None if no error.
+            Optional[Exception]: The exception raised during invocation,
+                or None if no error.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def set_exception(self, exception: Exception) -> None:
+    def set_exception(self, exception: Exception) -> None:
         """Asynchronously sets the exception (error) for the invocation.
 
         Args:

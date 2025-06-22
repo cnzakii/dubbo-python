@@ -144,7 +144,7 @@ class StreamDataBuffer:
                         self._deque.appendleft(item)
                     break
             else:
-                # send any unacknowledged data if we have some and wait for more
+                # If we have unacked data, we should acknowledge it before waiting for more data
                 if total_ack_size:
                     self._ack_callback(total_ack_size)
                     total_ack_size = 0

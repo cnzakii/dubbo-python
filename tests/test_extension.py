@@ -186,7 +186,7 @@ class TestExtensionLoader:
         importlib.import_module = mock_import_module  # type: ignore[assignment]
 
         try:
-            loader = ExtensionLoader(TestInterface, {"impl1": "mock.module:TestImpl"})
+            loader = ExtensionLoader(TestInterface, {"impl1": "mock.module.TestImpl"})
 
             # First call should use import
             impl1 = loader.load_class("impl1")
@@ -205,24 +205,6 @@ class TestExtensionLoader:
         finally:
             # Restore original import function
             importlib.import_module = original_import
-
-    def test_create_instance(self):
-        """Test instantiation of implementations."""
-        loader = ExtensionLoader(TestInterface, {"impl1": TestImpl1, "impl2": TestImpl2})
-
-        # Test simple instantiation
-        instance1 = loader.create_instance("impl1")
-        assert isinstance(instance1, TestImpl1)
-
-        # Test instantiation with arguments
-        instance2 = loader.create_instance("impl2", "value1", arg2="value2")
-        assert isinstance(instance2, TestImpl2)
-        assert instance2.arg1 == "value1"
-        assert instance2.arg2 == "value2"
-
-        # Test instantiation of non-existent implementation
-        with pytest.raises(ExtensionError):
-            loader.create_instance("non_existent")
 
 
 class TestExtensionManager:
@@ -312,31 +294,6 @@ class TestExtensionManager:
         with pytest.raises(ExtensionError):
             manager.load_class(UnregisteredInterface, "impl1")
 
-    def test_create_instance(self, manager):
-        """
-        Test instantiating an implementation through the manager.
-
-        Args:
-            manager (ExtensionManager): The manager fixture.
-        """
-        # Test instantiating a simple implementation
-        instance1 = manager.create_instance(TestInterface, "impl1")
-        assert isinstance(instance1, TestImpl1)
-
-        # Test instantiating with arguments
-        instance2 = manager.create_instance(TestInterface, "impl2", "value1", arg2="value2")
-        assert isinstance(instance2, TestImpl2)
-        assert instance2.arg1 == "value1"
-        assert instance2.arg2 == "value2"
-
-        # Test instantiating from another interface
-        instance3 = manager.create_instance(AnotherInterface, "another")
-        assert isinstance(instance3, AnotherImpl)
-
-        # Test instantiating a non-existent implementation
-        with pytest.raises(ExtensionError):
-            manager.create_instance(TestInterface, "non_existent")
-
     def test_register_extension(self, manager):
         """
         Test registering a new implementation through the manager.
@@ -357,10 +314,6 @@ class TestExtensionManager:
         # Verify it was registered correctly
         impl = manager.load_class(TestInterface, "impl3")
         assert impl == TestImpl3
-
-        # Test instantiation
-        instance = manager.create_instance(TestInterface, "impl3")
-        assert isinstance(instance, TestImpl3)
 
         # Test registering to a non-existent loader
         class UnregisteredInterface:

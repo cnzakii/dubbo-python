@@ -24,7 +24,7 @@ from h2.config import H2Configuration
 from h2.connection import H2Connection
 
 from dubbo.common import constants
-from dubbo.common.utils import common as common_utils
+from dubbo.common.utils import common_utils
 from dubbo.logger import logger
 from dubbo.remoting.backend import NetworkStream
 from dubbo.remoting.backend.exceptions import ReceiveError, SendError

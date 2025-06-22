@@ -90,7 +90,7 @@ class AioHttp2Server(AsyncHttp2Server):
         self._stream_handler = None
         self._tg = None
 
-    def _protocol_factory(self) -> Http2Protocol:
+    def protocol_factory(self) -> Http2Protocol:
         """Factory method to create an HTTP/2 protocol instance."""
         assert self._tg is not None, "Task group must be initialized before creating protocol"
         return Http2Protocol(
@@ -152,13 +152,14 @@ class AioHttp2Transport(AsyncHttp2Transport):
                     host=url.host,
                     port=url.port,
                 )
+                await client.__aenter__()
                 return client
 
     async def bind(self, url: URL) -> AioHttp2Server:
         """Binds to the given URL and returns an HTTP/2 server connection."""
         server = AioHttp2Server()
         listener = await get_running_loop().create_server(
-            protocol_factory=server._protocol_factory,
+            protocol_factory=server.protocol_factory,
             host=url.host,
             port=url.port,
         )

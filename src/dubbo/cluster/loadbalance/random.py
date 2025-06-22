@@ -14,36 +14,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import random
-from typing import Optional
+from collections.abc import Sequence
+from typing import Optional, TypeVar, Union
 
 from dubbo.common import URL
-from dubbo.protocol import Invocation, Invoker
+from dubbo.protocol import AsyncInvoker, Invocation, Invoker
 
-from .base import LoadBalance, get_weight
+from .base import BaseAsyncLoadBalance, BaseLoadBalance, get_weight
 
-__all__ = ["RandomLoadBalance"]
+__all__ = ["RandomLoadBalance", "AsyncRandomLoadBalance"]
+
+_T_Invoker = TypeVar("_T_Invoker", bound=Union[Invoker, AsyncInvoker])
 
 
-class RandomLoadBalance(LoadBalance):
+def _select_random(invokers: Sequence[_T_Invoker], invocation: Invocation) -> _T_Invoker:
+    """Select using weighted random algorithm.
+
+    Returns:
+        Randomly selected invoker based on computed weights.
+    """
+    # Precompute weights
+    weights = [get_weight(invoker, invocation) for invoker in invokers]
+
+    # randomly select an invoker based on weights
+    return random.choices(invokers, weights=weights)[0]
+
+
+class RandomLoadBalance(BaseLoadBalance):
     """Random load balancing with weight support.
 
     Uses weighted random selection where higher weights increase selection
     probability. Falls back to uniform random when weights are equal.
     """
 
-    def select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
-        """Select using weighted random algorithm.
+    def do_select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
+        return _select_random(invokers, invocation)
 
-        Returns:
-            Randomly selected invoker based on computed weights.
-        """
-        if not invokers:
-            return None
-        if len(invokers) == 1:
-            return invokers[0]
 
-        # Precompute weights
-        weights = [get_weight(invoker, invocation) for invoker in invokers]
+class AsyncRandomLoadBalance(BaseAsyncLoadBalance):
+    """Asynchronous random load balancing with weight support.
 
-        # randomly select an invoker based on weights
-        return random.choices(invokers, weights=weights)[0]
+    Uses weighted random selection where higher weights increase selection
+    probability. Falls back to uniform random when weights are equal.
+    """
+
+    async def do_select(self, invokers: list[AsyncInvoker], url: URL, invocation: Invocation) -> Optional[AsyncInvoker]:
+        return _select_random(invokers, invocation)

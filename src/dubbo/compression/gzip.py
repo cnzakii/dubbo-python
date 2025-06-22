@@ -18,7 +18,7 @@ import gzip
 
 from dubbo.common.classes import SingletonBase
 from dubbo.common.types import BytesLike
-from dubbo.common.utils import common as common_utils
+from dubbo.common.utils import common_utils
 
 from .base import Compressor, Decompressor
 

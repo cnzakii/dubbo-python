@@ -1,0 +1,141 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from contextlib import asynccontextmanager
+from typing import Optional
+
+from dubbo.common import URL, constants
+from dubbo.logger import logger
+from dubbo.protocol.exceptions import RpcError
+from dubbo.registry.base import AsyncNotifyListenerType, AsyncRegistry
+from dubbo.remoting.zookeeper import AsyncChildrenListenerType, AsyncZookeeperClient, ConnectionState
+
+from ._base import BaseZookeeperRegistry
+
+__all__ = ["AsyncZookeeperRegistry"]
+
+
+class AsyncZookeeperRegistry(AsyncRegistry, BaseZookeeperRegistry):
+    _url: URL
+    _client: AsyncZookeeperClient
+
+    # some attributes to hold the state of the registry
+    _root: str
+    _listener_map: dict[tuple[str, AsyncNotifyListenerType], AsyncChildrenListenerType]
+
+    def __init__(self, url: URL, client: AsyncZookeeperClient) -> None:
+        self._url = url
+        self._client = client
+        self._root = constants.DUBBO
+
+    async def initialize(self) -> None:
+        # set the root path for the registry
+        group = self._url.get_group(self._root)
+        self._root = group if group.startswith("/") else f"/{group}"
+
+        # add state listener
+        async def _state_listener(state: ConnectionState) -> None:
+            """Handle state changes of the Zookeeper connection."""
+            if state == ConnectionState.LOST:
+                logger.warning("[AsyncZookeeperRegistry] Connection lost...")
+            # TODO: Handle other states like CONNECTED, SUSPENDED, etc.
+
+        await self._client.add_state_listener(_state_listener)
+
+    @asynccontextmanager
+    async def _guard(self, err_msg: Optional[str] = None):
+        """Context manager to guard the execution of registry operations.
+        Raises RpcError if the Zookeeper client is not available or if an exception occurs.
+        """
+        if not self.is_available():
+            raise RpcError("Zookeeper client is not available.")
+        try:
+            yield
+        except RpcError:
+            raise  # re-raise
+        except Exception as e:
+            err_msg = err_msg or "An error occurred during registry operation."
+            raise RpcError(err_msg) from e
+
+    @property
+    def root_path(self) -> str:
+        """Return the root path used for service registration."""
+        return self._root
+
+    async def register(self, url: URL) -> None:
+        """Register a URL to the registry."""
+        async with self._guard(f"Failed to register URL {url} in Zookeeper."):
+            await self._client.create(
+                path=self.get_registry_path(url),
+                ephemeral=url.get_param_bool(constants.DYNAMIC_KEY, default=True),
+                makepath=True,
+            )
+
+    async def unregister(self, url: URL) -> None:
+        """Unregister a URL from the registry."""
+        async with self._guard(f"Failed to unregister URL {url} from Zookeeper."):
+            await self._client.delete(path=self.get_registry_path(url))
+
+    async def subscribe(self, url: URL, listener: AsyncNotifyListenerType) -> None:
+        """Subscribe to a URL in the registry."""
+
+        async def _listener_wrapper(children: list[str]) -> None:
+            if not children:
+                return
+            try:
+                urls = [URL.from_str(child, decode=True) for child in children]
+                await listener(urls)
+            except Exception as e:
+                logger.exception(f"Error in notify listener for path {path}: {e}")
+
+        async with self._guard(f"Failed to subscribe to URL {url} in Zookeeper."):
+            path = self.get_category_path(url)
+            if not await self._client.exists(path):
+                await self._client.create(path, makepath=True)
+
+            key = (path, listener)
+            if key not in self._listener_map:
+                await self._client.add_children_listener(path, _listener_wrapper)
+                self._listener_map[key] = _listener_wrapper
+            else:
+                logger.debug(f"Listener already registered for {path}")
+
+    async def unsubscribe(self, url: URL, listener: AsyncNotifyListenerType) -> None:
+        """Unsubscribe from a URL in the registry."""
+        path = self.get_category_path(url)
+        key = (path, listener)
+
+        async with self._guard(f"Failed to unsubscribe from URL {url} in Zookeeper."):
+            wrapper = self._listener_map.pop(key, None)
+            if wrapper is not None:
+                await self._client.remove_children_listener(path, wrapper)
+            else:
+                logger.warning(f"No listener found for {path} with {listener}")
+
+    def get_url(self) -> URL:
+        """Get the URL of the registry."""
+        return self._url
+
+    def is_available(self) -> bool:
+        """Check if the registry is available."""
+        return self._client.connected
+
+    async def destroy(self) -> None:
+        """Destroy the registry and release resources."""
+        if self._client.connected:
+            try:
+                await self._client.aclose()
+            except Exception as e:
+                logger.error(f"Error closing Zookeeper client: {e}")

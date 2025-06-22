@@ -109,6 +109,7 @@ class AsyncKazooZookeeperClient(AsyncZookeeperClient):
         event = self._kazoo.start_async()
         await to_thread.run_sync(_wait_start, self._kazoo, event)
 
+    @property
     def connected(self) -> bool:
         return self._kazoo.connected
 
@@ -139,7 +140,7 @@ class AsyncKazooZookeeperClient(AsyncZookeeperClient):
         return await future.result()
 
     async def delete(self, path: str, recursive: bool = False) -> None:
-        def _do_delete(_client, _path, _recursive):
+        def _do_delete(_client: KazooClient, _path: str, _recursive: bool):
             try:
                 _client.delete(_path, recursive=_recursive)
             except NoNodeError:

@@ -20,9 +20,9 @@ from typing import Optional, cast
 import anyio
 from anyio import abc as anyio_abc
 from h2.config import H2Configuration
+from typing_extensions import TypeAlias
 
 from dubbo.common import URL, constants
-from dubbo.common.types import TypeAlias
 from dubbo.exceptions import ExceptionMapping, map_exceptions
 from dubbo.logger import logger
 from dubbo.remoting.backend import (
@@ -43,12 +43,12 @@ from ..base import (
 )
 from .connection import AnyIOH2Connection
 
-__all__ = ["AnyIOH2Client", "AnyIOH2Server", "AnyIOH2Transport"]
+__all__ = ["AnyIOHttp2Client", "AnyIOHttp2Server", "AnyIOHttp2Transport"]
 
 _ServerType: TypeAlias = AsyncNetworkServer[AsyncNetworkStream[bytes], AsyncStreamHandlerType]
 
 
-class AnyIOH2Client(AsyncHttp2Client, AnyIOH2Connection):
+class AnyIOHttp2Client(AsyncHttp2Client, AnyIOH2Connection):
     """
     An AnyIO-based HTTP/2 client implementation.
     """
@@ -77,7 +77,7 @@ class AnyIOH2Client(AsyncHttp2Client, AnyIOH2Connection):
         await self._stack.__aexit__(exc_type, exc_value, traceback)
 
 
-class AnyIOH2Server(AsyncHttp2Server):
+class AnyIOHttp2Server(AsyncHttp2Server):
     """
     An AnyIO-based HTTP/2 server implementation.
     """
@@ -148,17 +148,17 @@ class AnyIOH2Server(AsyncHttp2Server):
 _DEFAULT_CONNECTION_TIMEOUT = 10.0  # seconds
 
 
-class AnyIOH2Transport(AsyncHttp2Transport):
+class AnyIOHttp2Transport(AsyncHttp2Transport):
     """An HTTP/2 transport implementation using AnyIO."""
 
     __slots__ = ("_backend",)
 
     _backend: AsyncNetworkBackend
 
-    def __init__(self):
-        self._backend = AnyIOBackend()
+    def __init__(self, backend: Optional[AsyncNetworkBackend] = None) -> None:
+        self._backend = backend or AnyIOBackend()
 
-    async def connect(self, url: URL) -> AnyIOH2Client:
+    async def connect(self, url: URL) -> AnyIOHttp2Client:
         """Connects to the given URL and returns an HTTP/2 client connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
@@ -168,11 +168,12 @@ class AnyIOH2Transport(AsyncHttp2Transport):
         with map_exceptions(exc_map):
             with anyio.fail_after(timeout):
                 net_stream = await self._backend.connect_tcp(url.host, url.port)
-                client = AnyIOH2Client(net_stream)
+                client = AnyIOHttp2Client(net_stream)
                 logger.info("HTTP/2 connection established to %s", net_stream.get_extra_info("remote_address"))
+                await client.__aenter__()
                 return client
 
-    async def bind(self, url: URL) -> AnyIOH2Server:
+    async def bind(self, url: URL) -> AnyIOHttp2Server:
         """Binds to the given URL and returns an HTTP/2 server connection."""
         timeout = url.get_param_float(constants.TIMEOUT_KEY, _DEFAULT_CONNECTION_TIMEOUT)
 
@@ -183,4 +184,4 @@ class AnyIOH2Transport(AsyncHttp2Transport):
             with anyio.fail_after(timeout):
                 server = await self._backend.create_tcp_server(local_host=url.host, local_port=url.port)
                 logger.info("HTTP/2 server bound to %s", url.location)
-                return AnyIOH2Server(server)
+                return AnyIOHttp2Server(server)

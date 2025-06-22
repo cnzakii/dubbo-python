@@ -22,7 +22,7 @@ from socketserver import BaseRequestHandler, ThreadingTCPServer, ThreadingUDPSer
 from typing import Any, AnyStr, Callable, Generic, Optional, TypeVar, Union, cast
 
 from dubbo.common.types import HostLike
-from dubbo.common.utils import network as net_utils
+from dubbo.common.utils import net_utils
 from dubbo.exceptions import ExceptionMapping, map_exceptions
 
 from .base import (

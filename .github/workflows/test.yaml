@@ -53,7 +53,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment with all extras
-        run: " uv sync --all-extras"
+        run: "uv sync --all-extras"
 
       - name: Run Tests with Coverage
         run: "uv run pytest --cov=src/dubbo --cov-report=term-missing"

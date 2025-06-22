@@ -92,12 +92,12 @@ AUTO_PROCESS_EVENTS = (
 
 STREAM_EVENTS = (
     h2_events.ResponseReceived,  # Response headers received
-    h2_events.TrailersReceived,  # Trailing headers received (after END_STREAM)
+    h2_events.TrailersReceived,  # Trailing headers received
     h2_events.InformationalResponseReceived,  # 1xx informational response (e.g., 100 Continue)
     h2_events.DataReceived,  # Data frame payload
     h2_events.StreamEnded,  # Stream closed cleanly (END_STREAM)
     h2_events.StreamReset,  # Stream was reset (RST_STREAM)
-    h2_events.WindowUpdated,  # Flow control window update (per stream)
+    h2_events.WindowUpdated,  # Flow control window update
 )
 """Events that require stream-level processing and user handling.
 Note:

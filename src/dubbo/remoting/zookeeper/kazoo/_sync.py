@@ -57,6 +57,7 @@ class KazooZookeeperClient(ZookeeperClient):
     def start(self) -> None:
         self._kazoo.start()
 
+    @property
     def connected(self) -> bool:
         return self._kazoo.connected
 

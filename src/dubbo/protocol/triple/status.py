@@ -24,3 +24,12 @@ class TriRpcStatus:
     code: StatusCode
     description: Optional[str] = None
     cause: Optional[Exception] = None
+
+    def is_ok(self) -> bool:
+        """
+        Check if the status indicates a successful RPC call.
+
+        Returns:
+            bool: True if the status code is OK, False otherwise.
+        """
+        return self.code == StatusCode.OK

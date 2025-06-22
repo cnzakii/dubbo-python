@@ -157,8 +157,8 @@ class StreamDataBuffer:
 
             # try to get more data from the buffer
             try:
+                # If we have unacked data, we should acknowledge it before waiting for more data
                 if total_ack_size > 0:
-                    # send any unacknowledged data if we have some
                     await self._ack_callback(total_ack_size)
                     total_ack_size = 0
 

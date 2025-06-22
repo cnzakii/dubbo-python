@@ -345,7 +345,7 @@ class URL:
         """
         return self.get_param(constants.GROUP_KEY, default)
 
-    def get_interface(self, default: str = "") -> str:
+    def get_service(self, default: str = "") -> str:
         """Get the service parameter value.
 
         Args:
@@ -354,7 +354,7 @@ class URL:
         Returns:
             Service value if present, else default
         """
-        return self.get_param(constants.INTERFACE_KEY, default)
+        return self.get_param(constants.SERVICE_KEY, default)
 
     # ---------------------- Attribute Methods ----------------------
 
@@ -471,7 +471,7 @@ class URL:
             host=parsed.hostname or "",
             port=parsed.port or 0,
             path=parsed.path or "/",
-            params={k: v[0] for k, v in urlparse.parse_qs(parsed.query).items()},
+            params={k: ",".join(v) for k, v in urlparse.parse_qs(parsed.query).items()},
             attributes={},
         )
 

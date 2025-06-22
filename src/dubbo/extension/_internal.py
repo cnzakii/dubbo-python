@@ -19,6 +19,8 @@ from typing import Union
 
 from dubbo.cluster.loadbalance import LoadBalance
 from dubbo.compression import Compressor
+from dubbo.registry import AsyncRegistry, Registry
+from dubbo.remoting.h2 import AsyncHttp2Transport, Http2Transport
 from dubbo.remoting.zookeeper import AsyncZookeeperTransport, ZookeeperTransport
 
 
@@ -42,7 +44,21 @@ class ExtensionRegistry:
 loadBalanceRegistry = ExtensionRegistry(
     interface=LoadBalance,
     impls={
-        "random": "dubbo.cluster.loadbalance.random:RandomLoadBalance",
+        "random": "dubbo.cluster.loadbalance.random.RandomLoadBalance",
+    },
+)
+
+registryRegistry = ExtensionRegistry(
+    interface=Registry,
+    impls={
+        "zookeeper": "dubbo.registry.zookeeper.ZookeeperRegistry",
+    },
+)
+
+asyncRegistryRegistry = ExtensionRegistry(
+    interface=AsyncRegistry,
+    impls={
+        "zookeeper": "dubbo.registry.zookeeper.AsyncZookeeperRegistry",
     },
 )
 
@@ -50,23 +66,39 @@ loadBalanceRegistry = ExtensionRegistry(
 compressorRegistry = ExtensionRegistry(
     interface=Compressor,
     impls={
-        "identity": "dubbo.compression.identity:Identity",
-        "gzip": "dubbo.compression.gzip:Gzip",
-        "bzip2": "dubbo.compression.bzip2:Bzip2",
+        "identity": "dubbo.compression.identity.Identity",
+        "gzip": "dubbo.compression.gzip.Gzip",
+        "bzip2": "dubbo.compression.bzip2.Bzip2",
     },
 )
 
 zkTransportRegistry = ExtensionRegistry(
     interface=ZookeeperTransport,
     impls={
-        "kazoo": "dubbo.remoting.zookeeper.kazoo:KazooTransport",
+        "kazoo": "dubbo.remoting.zookeeper.kazoo.KazooTransport",
     },
 )
 
 asyncZkTransportRegistry = ExtensionRegistry(
     interface=AsyncZookeeperTransport,
     impls={
-        "kazoo": "dubbo.remoting.zookeeper.kazoo:AsyncKazooTransport",
+        "kazoo": "dubbo.remoting.zookeeper.kazoo.AsyncKazooTransport",
+    },
+)
+
+h2TransportRegistry = ExtensionRegistry(
+    interface=Http2Transport,
+    impls={
+        "sync": "dubbo.remoting.h2.sync.transport.SyncHttp2Transport",
+    },
+)
+
+asyncH2TransportRegistry = ExtensionRegistry(
+    interface=AsyncHttp2Transport,
+    impls={
+        "auto": "dubbo.remoting.h2.auto.AutoHttp2Transport",
+        "asyncio": "dubbo.remoting.h2.aio.transport.AioHttp2Transport",
+        "anyio": "dubbo.remoting.h2.anyio.transport.AnyIOHttp2Transport",
     },
 )
 

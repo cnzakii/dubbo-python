@@ -19,7 +19,7 @@ import socket
 
 import pytest
 
-from dubbo.common.utils.network import (
+from dubbo.common.utils.net_utils import (
     IPV4_VERSION,
     IPV6_VERSION,
     MAX_PORT,
@@ -99,8 +99,8 @@ class TestPortFunctions:
             mocker: pytest-mock fixture for mocking.
         """
         # Mock get_random_port and is_port_in_use
-        mock_random = mocker.patch("dubbo.common.utils.network.get_random_port")
-        mock_in_use = mocker.patch("dubbo.common.utils.network.is_port_in_use")
+        mock_random = mocker.patch("dubbo.common.utils.net_utils.get_random_port")
+        mock_in_use = mocker.patch("dubbo.common.utils.net_utils.is_port_in_use")
 
         # Setup mocks to return a specific port and mark it as available
         mock_random.return_value = 30000
@@ -121,7 +121,7 @@ class TestPortFunctions:
             mocker: pytest-mock fixture for mocking.
         """
         # Mock is_port_in_use
-        mock_in_use = mocker.patch("dubbo.common.utils.network.is_port_in_use")
+        mock_in_use = mocker.patch("dubbo.common.utils.net_utils.is_port_in_use")
 
         # Setup mock to mark the port as available
         mock_in_use.return_value = False
@@ -140,7 +140,7 @@ class TestPortFunctions:
             mocker: pytest-mock fixture for mocking.
         """
         # Mock is_port_in_use
-        mock_in_use = mocker.patch("dubbo.common.utils.network.is_port_in_use")
+        mock_in_use = mocker.patch("dubbo.common.utils.net_utils.is_port_in_use")
 
         # Setup mock to mark first port as unavailable, second port as available
         mock_in_use.side_effect = [True, False]
@@ -159,7 +159,7 @@ class TestPortFunctions:
             mocker: pytest-mock fixture for mocking.
         """
         # Mock is_port_in_use
-        mock_in_use = mocker.patch("dubbo.common.utils.network.is_port_in_use")
+        mock_in_use = mocker.patch("dubbo.common.utils.net_utils.is_port_in_use")
 
         # Setup mock to mark port as available
         mock_in_use.return_value = False
@@ -178,7 +178,7 @@ class TestPortFunctions:
             mocker: pytest-mock fixture for mocking.
         """
         # Mock is_port_in_use to always return True (all ports in use)
-        mock_in_use = mocker.patch("dubbo.common.utils.network.is_port_in_use")
+        mock_in_use = mocker.patch("dubbo.common.utils.net_utils.is_port_in_use")
         mock_in_use.return_value = True
 
         # Define a smaller range for testing

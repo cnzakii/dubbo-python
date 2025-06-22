@@ -15,15 +15,19 @@
 # limitations under the License.
 import abc
 import time
-from typing import Optional
+from typing import Optional, TypeVar, Union
 
 from dubbo.common import URL, constants
-from dubbo.protocol import Invocation, Invoker
+from dubbo.protocol import AsyncInvoker, Invocation, Invoker
 
-__all__ = ["LoadBalance", "get_weight"]
+from ..base import AsyncLoadBalance, LoadBalance
+
+__all__ = ["BaseLoadBalance", "AsyncLoadBalance", "get_weight"]
+
+_T_Invoker = TypeVar("_T_Invoker", bound=Union[Invoker, AsyncInvoker])
 
 
-def get_weight(invoker: Invoker, invocation: Invocation) -> int:
+def get_weight(invoker: _T_Invoker, invocation: Invocation) -> int:
     """Get the weight of the invoker with warmup capability.
 
     Calculates weight based on URL parameters and warmup time. New services
@@ -45,43 +49,59 @@ def get_weight(invoker: Invoker, invocation: Invocation) -> int:
     if is_multiple:
         weight = url.get_param_int(constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT_VALUE)
     else:
+        # Get the weight from the url
         weight = url.get_method_param_int(invocation.method_name, constants.WEIGHT_KEY, constants.DEFAULT_WEIGHT_VALUE)
 
-        # Apply warmup adjustment for positive weights only
         if weight > 0:
+            # Get service provider startup timestamp
             timestamp = url.get_param_int(constants.TIMESTAMP_KEY, 0)
             if timestamp > 0:
                 # Calculate service uptime in milliseconds
                 uptime = max(int(time.time() * 1000) - timestamp, 1)
+                # Get service warm-up time
                 warmup = url.get_param_int(constants.WARMUP_KEY, constants.DEFAULT_WARMUP_VALUE)
-
-                # Adjust weight during warmup period
+                # If within warmup period, adjust weight -> downward adjustment
                 if 0 < uptime < warmup:
                     # Calculate warmup weight
                     warmup_weight = int(uptime / (warmup / weight))
                     # Ensure warmup weight is between 1 and original weight
                     weight = max(1, min(warmup_weight, weight))
-
     return max(weight, 0)
 
 
-class LoadBalance(abc.ABC):
-    """Base class for load balancing strategies.
+class BaseLoadBalance(LoadBalance, abc.ABC):
+    """Base class for load balancing strategies."""
 
-    Defines the interface for selecting an invoker from a list of available
-    invokers based on the load balancing algorithm implementation.
-    """
+    def select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
+        if not invokers:
+            return None
+        if len(invokers) == 1:
+            return invokers[0]
+
+        return self.do_select(invokers, url, invocation)
 
     @abc.abstractmethod
-    def select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
-        """Select an invoker from the available invokers list.
+    def do_select(self, invokers: list[Invoker], url: URL, invocation: Invocation) -> Optional[Invoker]:
+        """Abstract method to implement the specific load balancing algorithm."""
+        raise NotImplementedError()
 
-        Args:
-            invokers: List of available service invokers.
-            url: The request URL with configuration parameters.
-            invocation: The service invocation context.
 
-        Returns:
-            The selected invoker, or None if no suitable invoker is found.
-        """
+class BaseAsyncLoadBalance(AsyncLoadBalance, abc.ABC):
+    """Base class for asynchronous load balancing strategies.
+
+    This class extends BaseLoadBalance to provide an asynchronous interface
+    for selecting invokers.
+    """
+
+    async def select(self, invokers: list[AsyncInvoker], url: URL, invocation: Invocation) -> Optional[AsyncInvoker]:
+        if not invokers:
+            return None
+        if len(invokers) == 1:
+            return invokers[0]
+
+        return await self.do_select(invokers, url, invocation)
+
+    @abc.abstractmethod
+    async def do_select(self, invokers: list[AsyncInvoker], url: URL, invocation: Invocation) -> Optional[AsyncInvoker]:
+        """Asynchronous method to implement the specific load balancing algorithm."""
         raise NotImplementedError()

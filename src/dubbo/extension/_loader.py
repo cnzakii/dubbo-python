@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from .exceptions import ExtensionError
 
@@ -27,7 +27,7 @@ class ExtensionLoader:
     Provides a registry and loading mechanism for extension implementations,
     supporting two registration methods:
     1. Direct class reference
-    2. Import path string in the format 'module.submodule:ClassName'
+    2. Import path string in the format 'module.submodule.ClassName'
 
     Extensions are loaded on demand and cached for performance.
     """
@@ -39,7 +39,7 @@ class ExtensionLoader:
             interface: The interface or abstract base class to load implementations for
             impls: A mapping of names to implementations, where implementations can be
                 either direct class references or module paths in the format
-                'module.submodule:ClassName'
+                'module.submodule.ClassName'
         """
         self._interface = interface
         self._impls: dict[str, Union[str, type]] = impls or {}
@@ -60,7 +60,7 @@ class ExtensionLoader:
         Args:
             name: Unique identifier for the implementation
             impl: Either a class object or an import path string in
-                the format 'module.submodule:ClassName'
+                the format 'module.submodule.ClassName'
 
         Raises:
             ValueError: If name is empty or not a string
@@ -68,7 +68,7 @@ class ExtensionLoader:
 
         Example:
             loader.register("myImpl", MyImplementation)
-            loader.register("otherImpl", "mypackage.module:OtherImplementation")
+            loader.register("otherImpl", "mypackage.module.OtherImplementation")
         """
         if not isinstance(name, str) or not name:
             raise ValueError("Implementation name must be a non-empty string.")
@@ -124,11 +124,11 @@ class ExtensionLoader:
         # If it's a string path, import dynamically
         if isinstance(impl, str):
             try:
-                module_name, class_name = impl.rsplit(":", 1)
+                module_name, class_name = impl.rsplit(".", 1)
             except ValueError:
                 raise ExtensionError(
                     f"Implementation path '{impl}' for '{name}' is invalid. "
-                    f"Expected format 'module.submodule:ClassName'."
+                    f"Expected format 'module.submodule.ClassName'."
                 )
 
             try:
@@ -146,24 +146,3 @@ class ExtensionLoader:
             return cls
 
         raise ExtensionError(f"Unsupported implementation type for '{name}': {type(impl)}")
-
-    def create_instance(self, name: str, *args, **kwargs) -> Any:
-        """Create and return an instance of the named implementation.
-
-        Loads the implementation class and instantiates it with the
-        provided arguments.
-
-        Args:
-            name: The name of the registered implementation
-            *args: Positional arguments to pass to the constructor
-            **kwargs: Keyword arguments to pass to the constructor
-
-        Returns:
-            An instance of the implementation class
-
-        Example:
-            # Create an instance with constructor parameters
-            instance = loader.create_instance("myImpl", arg1, arg2, option=True)
-        """
-        cls = self.load_class(name)
-        return cls(*args, **kwargs)

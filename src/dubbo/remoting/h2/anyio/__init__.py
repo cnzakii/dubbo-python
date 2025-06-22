@@ -15,11 +15,11 @@
 # limitations under the License.
 
 from .stream import AnyIOH2Stream
-from .transport import AnyIOH2Client, AnyIOH2Server, AnyIOH2Transport
+from .transport import AnyIOHttp2Client, AnyIOHttp2Server, AnyIOHttp2Transport
 
 __all__ = [
     "AnyIOH2Stream",
-    "AnyIOH2Client",
-    "AnyIOH2Server",
-    "AnyIOH2Transport",
+    "AnyIOHttp2Client",
+    "AnyIOHttp2Server",
+    "AnyIOHttp2Transport",
 ]
