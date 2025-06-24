@@ -467,7 +467,7 @@ class TestGetMethodDescriptor:
 
     def test_get_method_descriptor_missing_params_and_func(self):
         """Test error when neither params nor function is provided."""
-        with pytest.raises(ValueError, match="Must provide either 'params' or a 'func'"):
+        with pytest.raises(ValueError, match="Must provide either 'param_types' or a 'func' to infer parameter details."):
             get_method_descriptor(CallType.UNARY, name="test_method")
 
     def test_get_method_descriptor_return_param_override(self):

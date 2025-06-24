@@ -2,6 +2,9 @@
 .idea/
 .vscode/
 
+# System files
+.DS_Store
+
 # Byte-compiled / optimized / DLL files / logs
 __pycache__/
 *.py[cod]
