@@ -23,6 +23,7 @@ from typing import Optional, Union
 from dubbo.remoting.h2 import Http2ErrorCode
 
 
+@enum.unique
 class MetadataName(enum.StrEnum):
     """
     Standard gRPC metadata keys used in HTTP/2 requests and responses.
@@ -41,6 +42,7 @@ class MetadataName(enum.StrEnum):
     STATUS_DETAILS_BIN = "grpc-status-details-bin"  # Binary-encoded google.rpc.Status (base64-encoded)
 
 
+@enum.unique
 class StatusCode(enum.IntEnum):
     """
     gRPC status codes.

@@ -62,7 +62,7 @@ class ParamDetail:
 
     NOTE:
         You should never check if a parameter is required using `default == None`.
-        Instead, always rely on the `is_required` flag.
+        Instead, always rely on the `required` flag.
 
     Attributes:
         name (str): The name of the parameter.
@@ -123,8 +123,8 @@ def get_method_descriptor(
     func: Optional[Callable[..., Any]] = None,
     *,
     name: Optional[str] = None,
-    params: Union[type, list[type], dict[str, type], None] = None,
-    return_param: Optional[type] = None,
+    param_types: Union[type, list[type], dict[str, type], None] = None,
+    return_type: Optional[type] = None,
     attributes: Optional[dict[str, Any]] = None,
 ) -> MethodDescriptor:
     """
@@ -134,8 +134,8 @@ def get_method_descriptor(
         call_type: The call type indicating the kind of method invocation.
         func: Optional callable to infer parameter and return types.
         name: The method name. If not provided, inferred from func.__name__.
-        params: Parameter types. Can be a single type, a list of types, or a dict of name->type.
-        return_param: Return type annotation, overrides func's return annotation if provided.
+        param_types: Parameter types. Can be a single type, a list of types, or a dict of name->type.
+        return_type: Return type annotation, overrides func's return annotation if provided.
         attributes: Optional dictionary of extra attributes.
 
     Returns:
@@ -150,7 +150,7 @@ def get_method_descriptor(
     if not name:
         raise ValueError("Method name must be provided or inferable from the function's __name__.")
 
-    params_dict: Optional[dict[str, type]] = _get_params_dict(params)
+    params_dict: Optional[dict[str, type]] = _get_params_dict(param_types)
     params_details: Optional[list[ParamDetail]] = None
 
     if func:
@@ -175,13 +175,13 @@ def get_method_descriptor(
                 for param in sig.parameters.values()
             ]
 
-        if return_param is None:
+        if return_type is None:
             # Get the return type annotation from the function signature
-            return_param = sig.return_annotation if sig.return_annotation is not inspect.Signature.empty else Any
+            return_type = sig.return_annotation if sig.return_annotation is not inspect.Signature.empty else Any
 
     if params_details is None:
         if params_dict is None:
-            raise ValueError("Must provide either 'params' or a 'func' to infer parameter details.")
+            raise ValueError("Must provide either 'param_types' or a 'func' to infer parameter details.")
 
         # If params is a list or a single type, treat it as positional parameters
         # If params is a dict, treat it as positional or keyword parameters
@@ -201,14 +201,14 @@ def get_method_descriptor(
     # validate parameter kinds for uniformity
     _validate_param_kinds_uniformity(params_details)
 
-    return_type_detail = ReturnParamDetail(annotation=return_param if return_param is not None else Any)
+    return_param_detail = ReturnParamDetail(annotation=return_type if return_type is not None else Any)
 
     return MethodDescriptor(
         name=name,
         call=func,
         call_type=call_type,
         params=params_details,
-        return_param=return_type_detail,
+        return_param=return_param_detail,
         attributes=attributes or {},
     )
 

@@ -19,33 +19,27 @@ from google.protobuf.message import Message
 
 from dubbo.common import constants
 from dubbo.common.classes import SingletonBase
-from dubbo.common.descriptor import MethodDescriptor, ParamDetail, ParamKind
+from dubbo.common.descriptor import ParamDetail, ParamKind
 
 from .base import Codec, CodecFactory, Decoder, Encoder
 
 __all__ = ["ProtobufEncoder", "ProtobufDecoder", "ProtobufCodec", "ProtobufCodecFactory"]
 
-_PROTOBUF_NAME = "protobuf"
-
 
 class ProtobufEncoder(Encoder):
     """
-    Protobuf encoder for encoding structured parameters.
+    Encoder that serializes a single Protobuf message into bytes.
     """
 
     @property
     def encoding(self) -> str:
-        """
-        Returns the name of the serialization format used by this encoder.
-        """
-        return _PROTOBUF_NAME
+        """Return the serialization format used by this encoder."""
+        return constants.PROTOBUF
 
     def encode(
         self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail], *, encoding: str = constants.UTF_8
     ) -> bytes:
-        """
-        Encode the given values based on parameter metadata into a serialized byte representation using Protobuf.
-        """
+        """Serialize a single Protobuf-compatible value to bytes."""
         if not params:
             return b""
 
@@ -54,56 +48,51 @@ class ProtobufEncoder(Encoder):
 
         param = params[0]
 
-        # Extract value from list or dict
+        # Extract the actual value
         if isinstance(values, list):
             if len(values) != 1:
                 raise ValueError(f"Expected a single value in list, but got {len(values)}.")
             value = values[0]
         else:
             if param.name not in values:
-                raise ValueError(f"Expected parameter '{param.name}' in values, but it was not found.")
+                raise ValueError(f"Missing parameter '{param.name}' in values.")
             value = values[param.name]
 
-        # Check value is a Protobuf Message or has SerializeToString method
-        if isinstance(value, Message) or hasattr(value, "SerializeToString"):
+        # Ensure the value is serializable via Protobuf
+        if hasattr(value, "SerializeToString"):
             try:
                 return value.SerializeToString()
             except Exception as e:
-                raise ValueError(f"Failed to serialize Protobuf message of type {type(value).__name__}: {e}") from e
+                raise ValueError(f"Failed to serialize Protobuf message ({type(value).__name__}): {e}") from e
 
-        raise TypeError(f"Expected a Protobuf message, but got {type(value).__name__} for parameter '{param.name}'.")
+        raise TypeError(f"Expected a Protobuf message, but got {type(value).__name__}.")
 
 
 class ProtobufDecoder(Decoder):
     """
-    Protobuf decoder for decoding structured parameters.
+    Decoder that deserializes bytes into a single Protobuf-compatible object.
     """
 
     @property
     def encoding(self) -> str:
-        """
-        Returns the name of the serialization format used by this decoder.
-        """
-        return _PROTOBUF_NAME
+        """Return the serialization format used by this decoder."""
+        return constants.PROTOBUF
 
     def decode(
         self, *, data: bytes, params: list[ParamDetail], encoding: str = constants.UTF_8
     ) -> Union[list[Any], dict[str, Any]]:
-        """
-        Decode a serialized byte representation into a dictionary of parameter names and values.
-        """
+        """Deserialize bytes into a Python object (Protobuf message, None, or raw bytes)."""
         if not params:
             if data:
-                raise ValueError("PbDecoder received unexpected data without parameter definitions.")
+                raise ValueError("Received data with no parameters defined.")
             return []
 
         if len(params) > 1:
-            raise ValueError("PbDecoder supports only one parameter for decoding, but multiple were provided.")
+            raise ValueError("Protobuf decoding supports only one parameter.")
 
         param = params[0]
         annotation = param.annotation
 
-        # Case 1: Expected Protobuf message
         if isinstance(annotation, type) and (issubclass(annotation, Message) or hasattr(annotation, "ParseFromString")):
             try:
                 message = annotation()
@@ -111,17 +100,14 @@ class ProtobufDecoder(Decoder):
             except Exception as e:
                 raise ValueError(f"Failed to parse Protobuf message: {e}") from e
 
-        # Case 2: Explicit None — no decoding needed
         elif annotation is type(None):
             message = None
 
-        # Case 3: Any — return raw bytes
         elif annotation is Any:
             message = data
 
-        # Case 4: Unknown/unsupported
         else:
-            raise TypeError(f"Unsupported annotation for PbDecoder: {annotation!r}")
+            raise TypeError(f"Unsupported parameter annotation: {annotation!r}")
 
         # Return as dict or list depending on param kind
         if param.kind in (ParamKind.KEYWORD_ONLY, ParamKind.POSITIONAL_OR_KEYWORD):
@@ -132,30 +118,33 @@ class ProtobufDecoder(Decoder):
 
 class ProtobufCodec(ProtobufEncoder, ProtobufDecoder, Codec):
     """
-    Protobuf codec that combines encoding and decoding functionality.
+    Protobuf codec combining encoder and decoder logic.
+    Inherits from both Encoder and Decoder for unified use.
     """
 
     @property
     def encoding(self) -> str:
-        """
-        Returns the name of the serialization format used by this codec.
-        """
-        return _PROTOBUF_NAME
+        return constants.PROTOBUF
 
 
 class ProtobufCodecFactory(CodecFactory, SingletonBase):
-    """Factory for creating Protobuf codecs, encoders, and decoders."""
+    """
+    Factory for creating ProtobufCodec, ProtobufEncoder, and ProtobufDecoder instances.
+
+    Note:
+        Returns the same stateless singleton instance of `ProtobufCodec` for all creation methods.
+    """
 
     __slots__ = ("_codec",)
 
     def __init__(self) -> None:
         self._codec = ProtobufCodec()
 
-    def create_encoder(self, descriptor: MethodDescriptor) -> Encoder:
+    def create_encoder(self, descriptor: Any) -> Encoder:
         return self._codec
 
-    def create_decoder(self, descriptor: MethodDescriptor) -> Decoder:
+    def create_decoder(self, descriptor: Any) -> Decoder:
         return self._codec
 
-    def create_codec(self, descriptor: MethodDescriptor) -> Codec:
+    def create_codec(self, descriptor: Any) -> Codec:
         return self._codec

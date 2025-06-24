@@ -14,10 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Annotated, Any, ForwardRef, Optional, Union
+from typing import Annotated, Any, ForwardRef, Optional, Union, cast
 
-from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
 from pydantic._internal._typing_extra import try_eval_type
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
@@ -32,16 +33,92 @@ from .base import Codec, CodecFactory, Decoder, Encoder
 __all__ = ["PydanticCodec", "PydanticCodecFactory", "PydanticEncoder", "PydanticDecoder"]
 
 
-_JSON_NAME = "json"
 _PYDANTIC_PARAM_FIELDS = "pydantic_param_fields"
 _PYDANTIC_RETURN_FIELD = "pydantic_return_field"
 _PYDANTIC_MERGED_MODEL = "pydantic_merged_model"
 
 
-@dataclass
+def set_param_fields(descriptor: MethodDescriptor, param_fields: dict[str, "ModelField"]) -> None:
+    """Set the parameter fields in the method descriptor."""
+    descriptor.attributes[_PYDANTIC_PARAM_FIELDS] = param_fields
+
+
+def has_param_fields(descriptor: MethodDescriptor) -> bool:
+    """Check if the method descriptor has parameter fields set."""
+    return _PYDANTIC_PARAM_FIELDS in descriptor.attributes
+
+
+def get_param_fields(descriptor: MethodDescriptor) -> dict[str, "ModelField"]:
+    """Get the parameter fields from the method descriptor."""
+    param_fields = descriptor.attributes.get(_PYDANTIC_PARAM_FIELDS)
+    if param_fields is None:
+        raise RuntimeError(
+            f"Method {descriptor.name} has not been analyzed for pydantic parameters. "
+            "Please call `analyze_method` first."
+        )
+    return param_fields
+
+
+def set_return_field(descriptor: MethodDescriptor, return_field: "ModelField") -> None:
+    """Set the return field in the method descriptor."""
+    descriptor.attributes[_PYDANTIC_RETURN_FIELD] = return_field
+
+
+def has_return_field(descriptor: MethodDescriptor) -> bool:
+    """Check if the method descriptor has a return field set."""
+    return _PYDANTIC_RETURN_FIELD in descriptor.attributes
+
+
+def get_return_field(descriptor: MethodDescriptor) -> "ModelField":
+    """Get the return field from the method descriptor."""
+    if return_field := descriptor.attributes.get(_PYDANTIC_RETURN_FIELD):
+        return return_field
+    raise RuntimeError(
+        f"Method {descriptor.name} has not been analyzed for pydantic return type. Please call `analyze_method` first."
+    )
+
+
+def set_merged_model(descriptor: MethodDescriptor, merged_model: type[BaseModel], type_adapter: TypeAdapter) -> None:
+    """Set the merged model and its TypeAdapter in the method descriptor."""
+    descriptor.attributes[_PYDANTIC_MERGED_MODEL] = (merged_model, type_adapter)
+
+
+def has_merged_model(descriptor: MethodDescriptor) -> bool:
+    """Check if the method descriptor has a merged model set."""
+    return _PYDANTIC_MERGED_MODEL in descriptor.attributes
+
+
+def get_merged_model(descriptor: MethodDescriptor) -> tuple[type[BaseModel], TypeAdapter]:
+    """Get the merged model and its TypeAdapter from the method descriptor."""
+    if merged_model := descriptor.attributes.get(_PYDANTIC_MERGED_MODEL):
+        return merged_model
+    raise RuntimeError(f"Method {descriptor.name} has not been set a merged model.")
+
+
+@contextmanager
+def wrap_validation_errors(field_name: str = "<unknown>"):
+    """Context manager to wrap validation-related exceptions with field context."""
+    try:
+        yield
+    except ValidationError as e:
+        lines = [f"Validation failed for field '{field_name}':"]
+        for item in e.errors():
+            loc = " -> ".join(str(i) for i in item.get("loc", [])) or "<value>"
+            msg = item.get("msg", "Unknown error")
+            typ = item.get("type", "unknown_type")
+            lines.append(f"  - {loc}: {msg} [{typ}]")
+        raise ValueError("\n".join(lines)) from e
+    except (TypeError, ValueError):
+        raise  # Preserve original TypeError/ValueError
+    except Exception as e:
+        raise ValueError(f"Unexpected error in field '{field_name}': {e}") from e
+
+
+@dataclass(frozen=True)
 class ModelField:
     """
-    Represents a field in a Pydantic model.
+    Represents a parameter or return value in a method, including metadata and
+    a Pydantic TypeAdapter for validation and serialization.
     """
 
     name: str
@@ -52,40 +129,70 @@ class ModelField:
     @property
     def default(self) -> Any:
         """
-        Get the default value of the field.
-        If the field is required, return PydanticUndefined.
+        Return the default value of the field, or PydanticUndefined if required.
         """
         if self.info.is_required():
-            # If the field is required, return PydanticUndefined to indicate no default value
             return PydanticUndefined
-        # If the field is not required, return the default value
-        return copy.deepcopy(self.info.get_default(call_default_factory=True))
+        raw_default = self.info.get_default(call_default_factory=False)
+        return copy.deepcopy(raw_default)
+
+    def validate_python(self, value: Any) -> Any:
+        """Validate a native Python value against the field's type."""
+        with wrap_validation_errors(self.name):
+            return self.adapter.validate_python(value)
+
+    def validate_json(self, value: Union[str, bytes, bytearray]) -> Any:
+        """Validate a JSON string or bytes input and convert to native Python."""
+        with wrap_validation_errors(self.name):
+            return self.adapter.validate_json(value)
+
+    def dump_python(self, value: Any, **kwargs) -> Any:
+        """Serialize a value to its Python representation."""
+        with wrap_validation_errors(self.name):
+            return self.adapter.dump_python(value, **kwargs)
+
+    def dump_json(self, value: Any, **kwargs) -> bytes:
+        """Serialize a value to JSON-encoded bytes."""
+        with wrap_validation_errors(self.name):
+            return self.adapter.dump_json(value, **kwargs)
+
+    def validate_and_dump(self, value: Any, **kwargs) -> bytes:
+        """Validate a Python value and serialize it to JSON."""
+        with wrap_validation_errors(self.name):
+            validated = self.adapter.validate_python(value)
+            return self.adapter.dump_json(validated, **kwargs)
 
     @classmethod
     def from_param_detail(cls, param: ParamDetail, globalns: dict[str, Any]) -> "ModelField":
         """
-        Create a ModelField from a ParamDetail.
+        Construct a ModelField from a ParamDetail.
+
+        Args:
+            param: The method parameter description, including name, type, and default
+            globalns: Global namespace for resolving forward references
+
+        Returns:
+            A fully configured ModelField
         """
         annotation = param.annotation
         value = param.default
         field_info: Optional[FieldInfo] = None
-        # If the annotation is a string, try to evaluate it (e.g., "User" -> User)
+
+        # Resolve forward references in string annotations (e.g. "User" → User)
         if isinstance(annotation, str):
             annotation, _ = try_eval_type(ForwardRef(annotation), globalns, globalns)
 
-        # If the annotation is an Annotated type, extract the type
+        # Extract FieldInfo from Annotated[type, FieldInfo, ...]
         if get_origin(annotation) is Annotated:
             args = get_args(annotation)
             annotation = args[0]
             for meta in reversed(args[1:]):
                 if isinstance(meta, FieldInfo):
-                    # If the meta is a FieldInfo, use it directly
                     field_info = meta
                     break
 
-        # build the field info
+        # Use FieldInfo from Annotated, from default value, or create a new one
         if field_info is not None:
-            # If we have a FieldInfo, use it as the field info
             field_info.annotation = annotation
         elif isinstance(value, FieldInfo):
             field_info = value
@@ -96,294 +203,259 @@ class ModelField:
                 default=value if not param.required else Ellipsis,
             )
 
-        # create a ModelField instance
-        return ModelField(
+        # Wrap annotation with FieldInfo via Annotated for full validation metadata
+        return cls(
             name=param.name, info=field_info, raw_detail=param, adapter=TypeAdapter(Annotated[annotation, field_info])
         )
 
 
 def create_merged_model(fields: dict[str, ModelField]) -> type[BaseModel]:
     """
-    Create a Pydantic model with the given fields.
-    This is used to merge multiple parameters into a single model.
+    Dynamically create a Pydantic model from a collection of ModelField instances.
+
+    Args:
+        fields: A mapping of parameter names to their corresponding ModelField.
+
+    Returns:
+        A dynamically created Pydantic model class (named "MergedModel").
+
+    Raises:
+        TypeError: If any parameter is not KEYWORD_ONLY or POSITIONAL_OR_KEYWORD.
     """
-    # Create a dictionary of field names and their corresponding TypeAdapter
     model_fields: dict[str, tuple[Any, FieldInfo]] = {}
+
     for field in fields.values():
-        if field.raw_detail.kind not in (
-            ParamKind.POSITIONAL_OR_KEYWORD,
-            ParamKind.KEYWORD_ONLY,
-            ParamKind.POSITIONAL_ONLY,
-        ):
+        if field.raw_detail.kind not in (ParamKind.POSITIONAL_OR_KEYWORD, ParamKind.KEYWORD_ONLY):
             raise TypeError(
-                f"Parameters in method must be POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD or KEYWORD_ONLY, "
-                f"but got {field.raw_detail.kind} for parameter '{field.name}'"
+                f"Parameters must be POSITIONAL_OR_KEYWORD or KEYWORD_ONLY, "
+                f"but got {field.raw_detail.kind} for '{field.name}'"
             )
+
         annotation = field.info.annotation or field.raw_detail.annotation
         model_fields[field.name] = (annotation, field.info)
 
-    # Create the Pydantic model dynamically
     return create_model("MergedModel", **model_fields)  # type: ignore
 
 
 def analyze_method(descriptor: MethodDescriptor) -> None:
     """
-    Analyze the method descriptor to extract parameter and return parameter information
+    Analyze a method's signature and populate its descriptor with Pydantic model fields.
+
+    Args:
+        descriptor: The method descriptor containing parameter/return metadata.
+
+    Raises:
+        TypeError: If any parameter uses an unsupported kind.
     """
-    params = descriptor.params
-    func = descriptor.call
-
-    globalns = getattr(func, "__globalns__", {})
-
-    # Extract the parameters and their default values
+    globalns = getattr(descriptor.call, "__globalns__", {})
     param_fields: dict[str, ModelField] = {}
-    for param in params:
-        if param.kind not in (ParamKind.POSITIONAL_OR_KEYWORD, ParamKind.KEYWORD_ONLY, ParamKind.POSITIONAL_ONLY):
-            raise TypeError(
-                f"Parameters in method {descriptor.name} must be "
-                f"POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD or KEYWORD_ONLY, "
-                f"but got {param.kind} for parameter '{param.name}'"
-            )
-        # create a ModelField from the ParamDetail
+
+    for param in descriptor.params:
+        if param.kind not in (
+            ParamKind.POSITIONAL_ONLY,
+            ParamKind.POSITIONAL_OR_KEYWORD,
+            ParamKind.KEYWORD_ONLY,
+        ):
+            raise TypeError(f"Invalid parameter kind for '{param.name}' in method '{descriptor.name}': {param.kind}")
+
         param_fields[param.name] = ModelField.from_param_detail(param, globalns)
 
-    # Extract the return parameter
-    return_field: ModelField = ModelField.from_param_detail(descriptor.return_param, globalns)
+    return_field = ModelField.from_param_detail(descriptor.return_param, globalns)
 
-    # Store the analyzed parameters and return type in the descriptor attributes
     descriptor.attributes[_PYDANTIC_PARAM_FIELDS] = param_fields
     descriptor.attributes[_PYDANTIC_RETURN_FIELD] = return_field
 
 
-def get_param_fields(descriptor: MethodDescriptor) -> dict[str, ModelField]:
-    """
-    Get the parameter fields from the method descriptor
-    Args:
-        descriptor (MethodDescriptor): The method descriptor to get the parameter fields from.
-    Returns:
-        dict[str, ModelField]: A dictionary mapping parameter names to ModelField instances.
-    Raises:
-        TypeError: If the method descriptor has not been analyzed for pydantic parameters.
-    """
-    try:
-        return descriptor.attributes[_PYDANTIC_PARAM_FIELDS]
-    except KeyError:
-        raise TypeError(
-            f"Method {descriptor.name} has not been analyzed for pydantic parameters. "
-            "Please call `analyze_method` first."
-        )
-
-
-def get_return_field(descriptor: MethodDescriptor) -> ModelField:
-    """
-    Get the return field from the method descriptor
-    Args:
-        descriptor (MethodDescriptor): The method descriptor to get the return field from.
-    Returns:
-        ModelField: The ModelField instance representing the return type of the method.
-    Raises:
-        TypeError: If the method descriptor has not been analyzed for pydantic return type.
-    """
-    try:
-        return descriptor.attributes[_PYDANTIC_RETURN_FIELD]
-    except KeyError:
-        raise TypeError(
-            f"Method {descriptor.name} has not been analyzed for pydantic return type. "
-            "Please call `analyze_method` first."
-        )
-
-
-def get_merged_model_info(descriptor: MethodDescriptor) -> tuple[type[BaseModel], TypeAdapter]:
-    """
-    Get the merged model and its TypeAdapter from the method descriptor.
-    Args:
-        descriptor (MethodDescriptor): The method descriptor to get the merged model from.
-    Returns:
-        tuple[type[BaseModel], TypeAdapter]: A tuple containing the merged model and its TypeAdapter.
-    Raises:
-        TypeError: If the method descriptor has not been analyzed for pydantic merged model.
-    """
-    try:
-        return descriptor.attributes[_PYDANTIC_MERGED_MODEL]
-    except KeyError:
-        raise TypeError(f"Method {descriptor.name} has not been analyzed for pydantic merged model. ")
-
-
 class PydanticEncoder(Encoder):
+    """
+    Encodes Python values into JSON bytes using Pydantic models.
+
+    It supports both single and multiple parameters by utilizing TypeAdapter validation,
+    and dynamically generates a merged model for multi-parameter scenarios.
+    """
+
     __slots__ = ("_descriptor",)
 
     _descriptor: MethodDescriptor
 
-    @property
-    def encoding(self) -> str:
-        """Get the encoding format used by this encoder."""
-        return _JSON_NAME
-
     def __init__(self, descriptor: MethodDescriptor) -> None:
         self._descriptor = descriptor
 
-        attributes = descriptor.attributes
-
-        if _PYDANTIC_PARAM_FIELDS not in attributes or _PYDANTIC_RETURN_FIELD not in attributes:
-            # If the attributes are not set, analyze the method to extract parameter fields
+        if not has_param_fields(descriptor) or not has_return_field(descriptor):
             analyze_method(descriptor)
 
-        if len(descriptor.params) > 1:
-            # If the method has multiple parameters, create a merged model
-            merged_model_info = attributes.get(_PYDANTIC_MERGED_MODEL)
+        self._ensure_merged_model()
 
-            if merged_model_info is None:
-                param_fields: dict[str, ModelField] = get_param_fields(descriptor)
-                merged_model = create_merged_model(param_fields)
-                type_adapter: TypeAdapter = TypeAdapter(merged_model)
+    def _ensure_merged_model(self) -> None:
+        """
+        If the method has multiple parameters, create and attach a merged Pydantic model
+        to simplify encoding and validation.
+        """
+        if len(self._descriptor.params) <= 1 or has_merged_model(self._descriptor):
+            return
 
-                attributes[_PYDANTIC_MERGED_MODEL] = (merged_model, type_adapter)
+        param_fields = get_param_fields(self._descriptor)
+        merged_model = create_merged_model(param_fields)
+        adapter = TypeAdapter(merged_model)
+        set_merged_model(self._descriptor, merged_model, adapter)
+
+    @property
+    def encoding(self) -> str:
+        """Return the encoding format used (currently fixed to JSON)."""
+        return constants.JSON
 
     def encode(
         self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail], *, encoding: str = constants.UTF_8
     ) -> bytes:
-        """
-        Encode the given values based on parameter metadata into a serialized byte representation.
-        """
-        params_len = len(params)
+        """Encode parameter values into bytes using the method's Pydantic model(s)."""
+        if isinstance(values, list) and len(params) != len(values):
+            raise ValueError("Number of provided values does not match the number of parameters.")
 
-        # Only check length for list inputs, dict inputs can have fewer values (using defaults)
-        if isinstance(values, list) and params_len != len(values):
-            raise ValueError("Number of parameters does not match number of values provided for encoding.")
-
-        if params_len == 0:
+        if not params:
             return b""
-        elif params_len == 1:
+
+        if len(params) == 1:
             return self._encode_single_param(values, params)
-        else:
-            return self._encode_multiple_params(values, params)
+
+        return self._encode_multiple_params(values, params)
 
     def _encode_single_param(self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail]) -> bytes:
-        """Encode a single parameter into bytes."""
-        # Analyze the parameters to get the field info and adapter
+        """
+        Encode a single parameter to JSON bytes using its TypeAdapter.
+        """
         param = params[0]
-        if param.kind == ParamKind.RETURN:
-            param_field = get_return_field(self._descriptor)
-        else:
-            param_field = get_param_fields(self._descriptor)[param.name]
+        field = (
+            get_return_field(self._descriptor)
+            if param.kind == ParamKind.RETURN
+            else get_param_fields(self._descriptor)[param.name]
+        )
 
-        if isinstance(values, dict):
-            value = values.get(param.name, PydanticUndefined)
-        else:
-            value = values[0] if isinstance(values, list) else values
+        value = values.get(param.name, PydanticUndefined) if isinstance(values, dict) else values[0]
 
-        # Validate the value using the adapter
-        adapter = param_field.adapter
-        validated_value = adapter.validate_python(value)
-
-        # Dump the value to JSON
-        return adapter.dump_json(validated_value, by_alias=True)
+        return field.validate_and_dump(value, by_alias=True)
 
     def _encode_multiple_params(self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail]) -> bytes:
-        """Encode multiple parameters into bytes."""
-        # get the merged model and its adapter
-        MergedModel, type_adapter = get_merged_model_info(self._descriptor)
+        """
+        Encode multiple parameters by building an instance of the merged model
+        and serializing it using its TypeAdapter.
+        """
+        MergedModel, adapter = get_merged_model(self._descriptor)
 
-        # convert values to a dictionary if it's a list
-        value_dict: dict[str, Any] = {}
-        if isinstance(values, list):
-            value_dict = {param.name: values[i] for i, param in enumerate(params)}
-        else:
-            value_dict = values
+        # Convert to dict if values is a list
+        value_dict = {param.name: values[i] for i, param in enumerate(params)} if isinstance(values, list) else values
 
-        # instantiate the merged model with the values
-        merged_instance = MergedModel(**value_dict)
-
-        # dump the merged instance to JSON
-        return type_adapter.dump_json(merged_instance, by_alias=True)
+        with wrap_validation_errors("MergedModel"):
+            merged_instance = MergedModel(**value_dict)
+            return adapter.dump_json(merged_instance, by_alias=True)
 
 
 class PydanticDecoder(Decoder):
     """
-    PydanticDecoder decodes bytes into parameters using Pydantic models.
-    It supports both single and multiple parameters.
+    Decodes JSON bytes into typed parameters using Pydantic models.
+
+    Supports both single and multiple parameter decoding by leveraging
+    method descriptors and TypeAdapter-based validation.
     """
 
     __slots__ = ("_descriptor", "_dict_adapter")
 
     _descriptor: MethodDescriptor
-    _dict_adapter: TypeAdapter
+    _dict_adapter: Optional[TypeAdapter]
 
     def __init__(self, descriptor: MethodDescriptor) -> None:
         self._descriptor = descriptor
-        if _PYDANTIC_PARAM_FIELDS not in descriptor.attributes or _PYDANTIC_RETURN_FIELD not in descriptor.attributes:
-            # If the attributes are not set, analyze the method to extract parameter fields
+        self._dict_adapter = None
+
+        if not has_param_fields(descriptor) or not has_return_field(descriptor):
             analyze_method(descriptor)
-        self._dict_adapter: TypeAdapter = TypeAdapter(dict[str, Any])
+
+        self._setup_multi_params()
+
+    def _setup_multi_params(self) -> None:
+        """
+        Set up a TypeAdapter for decoding multiple parameters from a JSON object.
+
+        Raises:
+            TypeError: If any parameter is not keyword-compatible.
+        """
+        params = self._descriptor.params
+        if len(params) <= 1:
+            return
+
+        if any(p.kind not in (ParamKind.KEYWORD_ONLY, ParamKind.POSITIONAL_OR_KEYWORD) for p in params):
+            raise TypeError(
+                f"All parameters in method '{self._descriptor.name}' must be keyword-compatible "
+                f"(KEYWORD_ONLY or POSITIONAL_OR_KEYWORD)."
+            )
+
+        self._dict_adapter = TypeAdapter(dict[str, Any])
 
     @property
     def encoding(self) -> str:
-        """Get the encoding format used by this encoder."""
-        return _JSON_NAME
+        """Return the encoding format used by this decoder (currently JSON)."""
+        return constants.JSON
 
     def decode(
         self, *, data: bytes, params: list[ParamDetail], encoding: str = constants.UTF_8
     ) -> Union[list[Any], dict[str, Any]]:
-        """Decode bytes into positional (list) or keyword (dict) arguments based on parameter metadata."""
-        params_len = len(params)
-        if params_len == 0:
-            if len(data) != 0:
-                raise ValueError("No parameters provided for decoding, but data is not empty.")
+        """
+        Decode a byte string into Python arguments based on method parameter metadata.
+
+        Returns:
+            - `list`: if the method takes positional or return parameters.
+            - `dict`: if the method takes keyword parameters.
+        """
+        if not params:
+            if data:
+                raise ValueError("Expected no parameters, but non-empty data was provided.")
             return []
-        elif params_len == 1:
+
+        if len(params) == 1:
             return self._decode_single_param(data, params[0])
-        else:
-            return self._decode_multiple_params(data, params)
+
+        return self._decode_multiple_params(data, params)
 
     def _decode_single_param(self, data: bytes, param: ParamDetail) -> Union[list[Any], dict[str, Any]]:
-        """Decode a single parameter from bytes."""
-        if param.kind == ParamKind.RETURN:
-            param_field = get_return_field(self._descriptor)
-        else:
-            param_field = get_param_fields(self._descriptor)[param.name]
+        """Decode a single parameter from JSON bytes."""
+        field = (
+            get_return_field(self._descriptor)
+            if param.kind == ParamKind.RETURN
+            else get_param_fields(self._descriptor)[param.name]
+        )
 
-        # Validate the value using the adapter
-        adapter = param_field.adapter
-        validated_value = adapter.validate_json(data)
+        value = field.validate_json(data)
 
-        # Return as a single-item list or dict based on the parameter kind
         if param.kind in (ParamKind.POSITIONAL_ONLY, ParamKind.RETURN):
-            return [validated_value]
-        return {param.name: validated_value}
+            return [value]
+        return {param.name: value}
 
     def _decode_multiple_params(self, data: bytes, params: list[ParamDetail]) -> dict[str, Any]:
-        """Decode multiple parameters from bytes."""
+        """Decode multiple parameters from JSON bytes into a dict of named arguments."""
         param_fields = get_param_fields(self._descriptor)
 
-        # Decode the data into a dictionary
-        decoded_dict = self._dict_adapter.validate_json(data)
+        with wrap_validation_errors("Multiple parameters"):
+            decoded_dict = cast(TypeAdapter, self._dict_adapter).validate_json(data)
 
-        final_result: dict[str, Any] = {}
-        for param_detail in params:
-            field = param_fields[param_detail.name]
+        result: dict[str, Any] = {}
 
-            raw_value = decoded_dict.get(param_detail.name, PydanticUndefined)
+        for param in params:
+            field = param_fields[param.name]
+            raw_value = decoded_dict.get(field.name, field.default)
 
             if raw_value is PydanticUndefined:
-                # If the value is not present, check if the field is required
-                if not field.info.is_required():
-                    # If not required, use the default value
-                    value = copy.deepcopy(field.default)
-                else:
-                    # Raise a more specific error for missing required field
-                    raise ValueError(f"Field {param_detail.name} is required but not provided.")
-            else:
-                # Validate the raw value using the adapter
-                value = field.adapter.validate_python(raw_value)
+                raise ValueError(f"Field '{param.name}' is required but not provided.")
 
-            final_result[param_detail.name] = value
-        return final_result
+            result[param.name] = field.validate_python(raw_value)
+
+        return result
 
 
 class PydanticCodec(Codec):
     """
-    PydanticCodec combines PydanticEncoder and PydanticDecoder to handle multiple parameters in a method.
-    It encodes and decodes multiple parameters using the actual encoder and decoder.
+    A Codec implementation based on Pydantic, combining encoding and decoding logic.
+
+    It delegates to PydanticEncoder and PydanticDecoder to handle validation and transformation
+    of parameters to/from serialized JSON bytes.
     """
 
     __slots__ = ("_encoder", "_decoder")
@@ -394,8 +466,8 @@ class PydanticCodec(Codec):
 
     @property
     def encoding(self) -> str:
-        """Get the encoding format used by this codec."""
-        return _JSON_NAME
+        """The encoding format used by this codec (e.g., 'json')."""
+        return constants.JSON
 
     def encode(
         self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail], *, encoding: str = constants.UTF_8
@@ -411,7 +483,11 @@ class PydanticCodec(Codec):
 
 
 class PydanticCodecFactory(CodecFactory, SingletonBase):
-    """PydanticCodecFactory"""
+    """
+    Factory class for creating Pydantic-based codec components.
+
+    Implements Encoder, Decoder, and Codec creation logic.
+    """
 
     def create_encoder(self, descriptor: MethodDescriptor) -> Encoder:
         """Create a PydanticEncoder for the given method descriptor."""

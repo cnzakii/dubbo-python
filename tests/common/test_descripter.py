@@ -388,7 +388,7 @@ class TestGetMethodDescriptor:
         params = {"user_id": str, "count": int}
 
         descriptor = get_method_descriptor(
-            CallType.SERVER_STREAM, name="test_method", params=params, return_param=list[str]
+            CallType.SERVER_STREAM, name="test_method", param_types=params, return_type=list[str]
         )
 
         assert descriptor.name == "test_method"
@@ -404,7 +404,7 @@ class TestGetMethodDescriptor:
         params = [str, int, bool]
 
         descriptor = get_method_descriptor(
-            CallType.BI_STREAM, name="test_method", params=params, return_param=dict[str, Any]
+            CallType.BI_STREAM, name="test_method", param_types=params, return_type=dict[str, Any]
         )
 
         assert descriptor.name == "test_method"
@@ -418,7 +418,7 @@ class TestGetMethodDescriptor:
 
     def test_get_method_descriptor_with_single_param_type(self):
         """Test creating MethodDescriptor with single param type."""
-        descriptor = get_method_descriptor(CallType.UNARY, name="simple_method", params=str, return_param=int)
+        descriptor = get_method_descriptor(CallType.UNARY, name="simple_method", param_types=str, return_type=int)
 
         assert descriptor.name == "simple_method"
         assert len(descriptor.params) == 1
@@ -429,7 +429,9 @@ class TestGetMethodDescriptor:
         """Test creating MethodDescriptor with custom attributes."""
         attributes = {"version": "1.0", "deprecated": False}
 
-        descriptor = get_method_descriptor(CallType.UNARY, name="attributed_method", params=str, attributes=attributes)
+        descriptor = get_method_descriptor(
+            CallType.UNARY, name="attributed_method", param_types=str, attributes=attributes
+        )
 
         assert descriptor.attributes == attributes
 
@@ -456,7 +458,7 @@ class TestGetMethodDescriptor:
         params = {"only_one": str}  # Function has 2 params, but we provide 1
 
         with pytest.raises(ValueError, match="parameter count mismatch"):
-            get_method_descriptor(CallType.UNARY, sample_func, params=params)
+            get_method_descriptor(CallType.UNARY, sample_func, param_types=params)
 
     def test_get_method_descriptor_missing_name_and_func(self):
         """Test error when neither name nor function is provided."""
@@ -474,7 +476,7 @@ class TestGetMethodDescriptor:
         def sample_func() -> str:
             return "test"
 
-        descriptor = get_method_descriptor(CallType.UNARY, sample_func, return_param=int)
+        descriptor = get_method_descriptor(CallType.UNARY, sample_func, return_type=int)
 
         assert descriptor.return_param.annotation is int
 
@@ -596,7 +598,7 @@ class TestDescriptorIntegration:
     )
     def test_parametrized_call_types(self, call_type):
         """Parametrized test for all call types."""
-        descriptor = get_method_descriptor(call_type, name="test_method", params=str, return_param=int)
+        descriptor = get_method_descriptor(call_type, name="test_method", param_types=str, return_type=int)
         assert descriptor.call_type == call_type
 
     def test_descriptor_with_various_annotations(self):
@@ -634,7 +636,7 @@ class TestDescriptorIntegration:
 
         # Create descriptor from explicit parameters
         desc2 = get_method_descriptor(
-            CallType.UNARY, name="test_method", params={"data": dict[str, Any]}, return_param=list[str]
+            CallType.UNARY, name="test_method", param_types={"data": dict[str, Any]}, return_type=list[str]
         )
 
         # They should have equivalent structure
@@ -683,7 +685,9 @@ class TestDescriptorIntegration:
     )
     def test_parametrized_param_formats(self, param_format, expected_count):
         """Parametrized test for different parameter formats."""
-        descriptor = get_method_descriptor(CallType.UNARY, name="test_method", params=param_format, return_param=str)
+        descriptor = get_method_descriptor(
+            CallType.UNARY, name="test_method", param_types=param_format, return_type=str
+        )
         assert len(descriptor.params) == expected_count
 
 
@@ -744,7 +748,7 @@ class TestDescriptorErrorHandling:
 
     def test_method_descriptor_with_none_attributes(self):
         """Test MethodDescriptor creation with None attributes."""
-        descriptor = get_method_descriptor(CallType.UNARY, name="test_method", params=str, attributes=None)
+        descriptor = get_method_descriptor(CallType.UNARY, name="test_method", param_types=str, attributes=None)
 
         assert descriptor.attributes == {}
 
@@ -774,7 +778,7 @@ class TestDescriptorPerformance:
         params = {f"param_{i}": str for i in range(param_count)}
 
         descriptor: MethodDescriptor = get_method_descriptor(
-            CallType.UNARY, name="many_params_method", params=params, return_param=dict
+            CallType.UNARY, name="many_params_method", param_types=params, return_type=dict
         )
 
         assert len(descriptor.params) == param_count
@@ -785,7 +789,7 @@ class TestDescriptorPerformance:
         complex_type = dict[str, list[Optional[dict[str, Union[int, str]]]]]
 
         descriptor = get_method_descriptor(
-            CallType.UNARY, name="complex_type_method", params={"data": complex_type}, return_param=complex_type
+            CallType.UNARY, name="complex_type_method", param_types={"data": complex_type}, return_type=complex_type
         )
 
         assert descriptor.params[0].annotation == complex_type

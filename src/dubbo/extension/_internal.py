@@ -17,11 +17,20 @@
 from dataclasses import dataclass
 from typing import Union
 
-from dubbo.cluster.loadbalance import LoadBalance
-from dubbo.compression import Compressor
+from dubbo.cluster import LoadBalance
+from dubbo.codec import CodecFactory
+from dubbo.compression import Compressor, Decompressor
 from dubbo.registry import AsyncRegistry, Registry
 from dubbo.remoting.h2 import AsyncHttp2Transport, Http2Transport
 from dubbo.remoting.zookeeper import AsyncZookeeperTransport, ZookeeperTransport
+
+# Global registry for all extension registries
+_EXTENSION_REGISTRIES: list["ExtensionRegistry"] = []
+
+
+def get_all_registries() -> list["ExtensionRegistry"]:
+    """Returns all registered extension registries."""
+    return _EXTENSION_REGISTRIES
 
 
 @dataclass(frozen=True)
@@ -40,6 +49,12 @@ class ExtensionRegistry:
     interface: type
     impls: dict[str, Union[str, type]]
 
+    def __post_init__(self) -> None:
+        """Post-initialization to register this instance globally."""
+        _EXTENSION_REGISTRIES.append(self)
+
+
+# --------- Define all extension registries for various interfaces ---------
 
 loadBalanceRegistry = ExtensionRegistry(
     interface=LoadBalance,
@@ -62,9 +77,26 @@ asyncRegistryRegistry = ExtensionRegistry(
     },
 )
 
+codecFactoryRegistry = ExtensionRegistry(
+    interface=CodecFactory,
+    impls={
+        "json": "dubbo.codec.json_codec.JsonCodecFactory",
+        "protobuf": "dubbo.codec.pb_codec.ProtobufCodecFactory",
+        "pydantic-json": "dubbo.codec.pydantic_codec.PydanticCodecFactory",
+    },
+)
 
 compressorRegistry = ExtensionRegistry(
     interface=Compressor,
+    impls={
+        "identity": "dubbo.compression.identity.Identity",
+        "gzip": "dubbo.compression.gzip.Gzip",
+        "bzip2": "dubbo.compression.bzip2.Bzip2",
+    },
+)
+
+decompressorRegistry = ExtensionRegistry(
+    interface=Decompressor,
     impls={
         "identity": "dubbo.compression.identity.Identity",
         "gzip": "dubbo.compression.gzip.Gzip",
@@ -101,24 +133,3 @@ asyncH2TransportRegistry = ExtensionRegistry(
         "anyio": "dubbo.remoting.h2.anyio.transport.AnyIOHttp2Transport",
     },
 )
-
-
-def get_all_registries() -> list[ExtensionRegistry]:
-    """Collect all ExtensionRegistry instances defined in this module.
-
-    Searches through the global namespace to find all ExtensionRegistry
-    instances, enabling automatic discovery of available extension points.
-
-    Returns:
-        List of all ExtensionRegistry instances in this module.
-
-    Example:
-        registries = get_all_registries()
-        for registry in registries:
-            print(f"Found registry for {registry.interface.__name__}")
-    """
-    registries = []
-    for name, obj in globals().items():
-        if isinstance(obj, ExtensionRegistry):
-            registries.append(obj)
-    return registries

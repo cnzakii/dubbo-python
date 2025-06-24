@@ -19,6 +19,8 @@ from dubbo.common import URL
 
 from .base import AsyncHttp2Client, AsyncHttp2Server, AsyncHttp2Transport
 
+__all__ = ["AutoHttp2Transport"]
+
 
 class AutoHttp2Transport(AsyncHttp2Transport):
     """

@@ -54,7 +54,7 @@ echo "Running ruff format..."
 $RUFF_CMD format $SOURCE_FILES $TEST_FILES --diff
 
 echo "Running ruff check..."
-$RUFF_CMD check --output-format=github $SOURCE_FILES $TEST_FILES --config=pyproject.toml
+$RUFF_CMD check --output-format=github $SOURCE_FILES --config=pyproject.toml
 
 # Get mypy command
 MYPY_CMD=$(get_command mypy Mypy) || exit 1

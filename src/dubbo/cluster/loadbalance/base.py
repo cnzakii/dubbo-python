@@ -22,7 +22,7 @@ from dubbo.protocol import AsyncInvoker, Invocation, Invoker
 
 from ..base import AsyncLoadBalance, LoadBalance
 
-__all__ = ["BaseLoadBalance", "AsyncLoadBalance", "get_weight"]
+__all__ = ["BaseLoadBalance", "BaseAsyncLoadBalance", "AsyncLoadBalance", "get_weight"]
 
 _T_Invoker = TypeVar("_T_Invoker", bound=Union[Invoker, AsyncInvoker])
 

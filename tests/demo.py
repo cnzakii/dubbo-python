@@ -13,10 +13,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 
-from dubbo.common import constants
 
-__all__ = ["logger"]
+from typing import Any, get_args, get_origin
 
-logger = logging.getLogger(constants.DUBBO)
+assert get_origin(Any) is None
+assert get_args(Any) == ()
+
+print(isinstance(Any, type))

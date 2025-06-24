@@ -20,10 +20,11 @@ import enum
 import json
 import re
 from collections import defaultdict, deque
+from contextlib import suppress
 from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Address, IPv6Interface, IPv6Network
 from os import PathLike
 from types import GeneratorType
-from typing import Any, Callable, Union
+from typing import Any, Callable, Union, cast
 from uuid import UUID
 
 from typing_extensions import get_args, get_origin
@@ -36,7 +37,8 @@ from .base import Codec, CodecFactory, Decoder, Encoder
 
 __all__ = ["JsonEncoder", "JsonDecoder", "JsonCodec", "JsonCodecFactory"]
 
-TYPE_TO_ENCODER: dict[type, Callable[[Any], Any]] = {
+# Mapping: type -> encoder function
+TYPE_ENCODERS: dict[type, Callable[[Any], Any]] = {
     bytes: lambda o: o.decode(),
     datetime.date: lambda o: o.isoformat(),
     datetime.datetime: lambda o: o.isoformat(),
@@ -44,7 +46,6 @@ TYPE_TO_ENCODER: dict[type, Callable[[Any], Any]] = {
     datetime.timedelta: lambda td: td.total_seconds(),
     decimal.Decimal: str,
     enum.Enum: lambda o: o.value,
-    frozenset: list,
     deque: list,
     GeneratorType: list,
     IPv4Address: str,
@@ -55,83 +56,144 @@ TYPE_TO_ENCODER: dict[type, Callable[[Any], Any]] = {
     IPv6Network: str,
     PathLike: str,
     re.Pattern: lambda o: o.pattern,
-    set: list,
     UUID: str,
 }
 
 
-def invert_encoders_map(
-    type_to_encoder: dict[type, Callable[[Any], Any]],
+def group_types_by_encoder(
+    type_encoders: dict[type, Callable[[Any], Any]],
 ) -> dict[Callable[[Any], Any], tuple[type, ...]]:
     """
-    Invert mapping from type->encoder to encoder->tuple of types.
+    Build an inverse mapping: encoder function -> tuple of types it supports.
     """
     encoder_to_types: dict[Callable[[Any], Any], tuple[type, ...]] = defaultdict(tuple)
-    for typ, encoder in type_to_encoder.items():
+    for typ, encoder in type_encoders.items():
         encoder_to_types[encoder] += (typ,)
     return encoder_to_types
 
 
-ENCODER_TO_TYPES = invert_encoders_map(TYPE_TO_ENCODER)
+ENCODERS_TYPE_GROUPS = group_types_by_encoder(TYPE_ENCODERS)
 
 
-def encode_jsonable(obj: Any) -> Any:
+def to_jsonable(obj: Any) -> Any:
     """
-    Recursively encode an object to a JSON-serializable format.
+    Recursively convert an object to a JSON-serializable format.
+
     Args:
         obj (Any): The object to encode.
-    Returns:
-        Any: A JSON-serializable representation of the object.
-    """
-    # Dataclass instance -> dict
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return encode_jsonable(dataclasses.asdict(obj))
 
-    # Primitives -> return as is
+    Returns:
+        Any: A JSON-safe structure (primitives, list, dict, etc.)
+    """
+    # Primitive JSON-compatible types
     if isinstance(obj, (str, int, float, type(None))):
         return obj
 
-    # Dict -> encode keys and values recursively
+    # Mapping: recursively encode keys and values
     if isinstance(obj, dict):
-        return {encode_jsonable(k): encode_jsonable(v) for k, v in obj.items()}
+        return {to_jsonable(k): to_jsonable(v) for k, v in obj.items()}
 
-    # List -> encode each element recursively
-    if isinstance(obj, list):
-        return [encode_jsonable(item) for item in obj]
+    # Sequence-like: recursively encode items
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return [to_jsonable(item) for item in obj]
 
-    # Direct type match -> use encoder
-    encoder = TYPE_TO_ENCODER.get(type(obj))
-    if encoder:
+    # Dataclass instance: convert to dict first
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return to_jsonable(dataclasses.asdict(obj))
+
+    # Exact type match in encoder registry
+    if encoder := TYPE_ENCODERS.get(type(obj)):
         return encoder(obj)
 
-    # Subclass match -> use corresponding encoder
-    for encoder_func, types_tuple in ENCODER_TO_TYPES.items():
+    # Subclass match: check grouped encoder-to-type map
+    for encoder_func, types_tuple in ENCODERS_TYPE_GROUPS.items():
         if isinstance(obj, types_tuple):
             return encoder_func(obj)
 
-    # Fallback: try dict() then vars()
+    # Fallback: attempt dict(obj) or vars(obj)
     try:
         data = dict(obj)
-    except Exception as e:
-        errors = [e]
+    except Exception as e1:
         try:
             data = vars(obj)
         except Exception as e2:
-            errors.append(e2)
-            raise ValueError(errors) from e2
-    return encode_jsonable(data)
+            raise ValueError([e1, e2]) from e2
+
+    return to_jsonable(data)
 
 
-TYPE_TO_DECODER: dict[type, Callable[[Any], Any]] = {
-    bytes: lambda o: bytes(o),
-    Any: lambda o: o,
+class JsonEncoder(Encoder):
+    """
+    JSON encoder that serializes a single named parameter into JSON bytes.
+
+    This encoder expects exactly one parameter (name + type) and either:
+    - A list with one value corresponding to that parameter, or
+    - A dict containing the parameter name.
+
+    It uses `to_jsonable` to recursively transform the object into a
+    JSON-compatible structure, then serializes it with `json.dumps`.
+    """
+
+    @property
+    def encoding(self) -> str:
+        """Returns the name of the serialization format used by this encoder."""
+        return constants.JSON
+
+    def encode(
+        self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail], *, encoding: str = constants.UTF_8
+    ) -> bytes:
+        """
+        Encode a single parameter value to JSON.
+
+        Args:
+            values: Either a list or dict of values.
+            params: List of parameter metadata (must contain exactly one).
+            encoding: Character encoding used for the resulting JSON bytes.
+
+        Returns:
+            JSON-encoded bytes.
+
+        Raises:
+            ValueError: On invalid input shape or serialization failure.
+        """
+        if not params:
+            return b""  # No parameters to encode
+
+        if len(params) > 1:
+            raise ValueError(f"JsonEncoder supports encoding only one parameter, but received {len(params)}.")
+
+        param = params[0]
+
+        # Extract value by index or key
+        if isinstance(values, list):
+            if len(values) != 1:
+                raise ValueError(f"Expected a single-element list for parameter '{param.name}', but got {len(values)}.")
+            value = values[0]
+        else:
+            if param.name not in values:
+                raise ValueError(f"Expected key '{param.name}' in values dict, but it was not found.")
+            value = values[param.name]
+
+        # Serialize
+        try:
+            jsonable = to_jsonable(value)
+            return json.dumps(jsonable, ensure_ascii=False).encode(encoding)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to encode value of type '{type(value).__name__}' for parameter '{param.name}': {e}"
+            ) from e
+
+
+# Mapping: target type -> decoder function
+TYPE_DECODERS: dict[type, Callable[[Any], Any]] = {
+    bytes: bytes,
     type(None): lambda o: None,
-    str: lambda o: o,
-    int: lambda o: int(o),
-    float: lambda o: float(o),
-    bool: lambda o: bool(o),
+    str: str,
+    int: int,
+    float: float,
+    bool: bool,
     datetime.date: lambda o: datetime.datetime.fromisoformat(o).date(),
-    datetime.datetime: lambda o: datetime.datetime.fromisoformat(o),
+    datetime.datetime: datetime.datetime.fromisoformat,
     datetime.time: lambda o: datetime.datetime.fromisoformat(o).time(),
     datetime.timedelta: lambda s: datetime.timedelta(seconds=float(s)),
     decimal.Decimal: decimal.Decimal,
@@ -145,135 +207,127 @@ TYPE_TO_DECODER: dict[type, Callable[[Any], Any]] = {
     IPv6Interface: IPv6Interface,
     IPv6Network: IPv6Network,
     PathLike: str,
-    re.Pattern: lambda o: re.compile(o),
+    re.Pattern: re.compile,
     set: set,
     UUID: UUID,
 }
 
 
-def invert_decoders_map(
-    type_to_decoder: dict[type, Callable],
-) -> dict[Callable, tuple[type, ...]]:
+def group_types_by_decoder(
+    type_decoders: dict[type, Callable[[Any], Any]],
+) -> dict[Callable[[Any], Any], tuple[type, ...]]:
     """
-    Invert mapping from type->decoder to decoder->tuple of types.
+    Build a reverse mapping: decoder function -> tuple of supported types.
     """
-    decoder_to_types: dict[Callable, tuple[type, ...]] = defaultdict(tuple)
-    for typ, decoder in type_to_decoder.items():
+    decoder_to_types: dict[Callable[[Any], Any], tuple[type, ...]] = defaultdict(tuple)
+    for typ, decoder in type_decoders.items():
         decoder_to_types[decoder] += (typ,)
     return decoder_to_types
 
 
-DECODER_TO_TYPES = invert_decoders_map(TYPE_TO_DECODER)
+DECODER_TYPE_GROUPS = group_types_by_decoder(TYPE_DECODERS)
 
 
-def decode_value(raw: Any, target_type: type) -> Any:
+def decode_value(raw: Union[dict, list, str, int, float, bool, None], target_type: Any) -> Any:
     """
-    Attempt to convert a `raw` value to the specified `target_type`.
-
-    Supports basic types, collections, dataclasses, and known special types.
+    Decode a raw value into the specified target type.
     """
-    # Fast-path: already correct type
-    if isinstance(raw, target_type):
-        return raw
-
     try:
+        # Handle Any type: return raw as is
+        if target_type is Any:
+            return raw
+
         origin = get_origin(target_type)
         args = get_args(target_type)
 
-        # Handle generic list type: List[T]
-        if origin is list and isinstance(raw, list) and args:
-            return [decode_value(v, args[0]) for v in raw]
+        # Handle Union (including Optional)
+        if origin is Union:
+            # If raw type matches any of the Union types, return it directly
+            if type(raw) in args:
+                return raw
 
-        # Handle generic dict type: Dict[K, V]
-        if origin is dict and isinstance(raw, dict) and args:
-            return {decode_value(k, args[0]): decode_value(v, args[1]) for k, v in raw.items()}
+            # Try each possible type until one succeeds
+            for possible_type in args:
+                with suppress(Exception):
+                    return decode_value(raw, possible_type)
+            raise ValueError(f"Value {raw!r} does not match any type in Union {args}")
 
-        # Handle dataclasses
-        if dataclasses.is_dataclass(target_type):
-            return target_type(**raw)
+        # Use origin for isinstance checks; fallback to target_type itself
+        check_type = origin or target_type
 
-        # Use direct decoder if available
-        decoder = TYPE_TO_DECODER.get(target_type)
-        if decoder:
+        # Fast path: if raw is already of the target type (or origin), return it
+        if isinstance(raw, check_type) and not isinstance(raw, (list, dict)):
+            return raw
+
+        # Handle list, decode each element recursively
+        if origin in (list, tuple, set, frozenset) and isinstance(raw, (list, tuple)):
+            item_type = args[0] if args else Any
+            return [decode_value(item, item_type) for item in raw]
+
+        # Handle dict, decode each key-value pair recursively
+        if origin is dict and isinstance(raw, dict):
+            key_type = args[0] if len(args) > 0 else str
+            value_type = args[1] if len(args) > 1 else Any
+            return {decode_value(k, key_type): decode_value(v, value_type) for k, v in raw.items()}
+
+        # Handle dataclass from dict input
+        if dataclasses.is_dataclass(check_type):
+            if not isinstance(raw, dict):
+                raise ValueError(f"Expected a dict for dataclass {check_type}, but got {type(raw).__name__}")
+            cls = cast(type, check_type)
+            return cls(
+                **{
+                    field.name: decode_value(raw.get(field.name), field.type)
+                    for field in dataclasses.fields(check_type)
+                }
+            )
+
+        # Use registered decoder function if available
+        if decoder := TYPE_DECODERS.get(target_type):
             return decoder(raw)
 
-        # Fallback: try matching decoder based on input type
-        for decoder_func, types_tuple in DECODER_TO_TYPES.items():
-            if isinstance(raw, types_tuple):
+        # Fallback: try to find decoder by matching raw's type
+        for decoder_func, supported_types in DECODER_TYPE_GROUPS.items():
+            if isinstance(raw, supported_types):
                 return decoder_func(raw)
 
         # Final fallback: try direct construction
         return target_type(raw)
-
     except Exception as e:
-        raise ValueError(f"Failed to decode value {raw!r} to type {target_type.__name__}: {e}") from e
-
-
-_JSON_NAME = "json"
-
-
-class JsonEncoder(Encoder):
-    """
-    JSON encoder for encoding structured parameters.
-    """
-
-    @property
-    def encoding(self) -> str:
-        """
-        Returns the name of the serialization format used by this encoder.
-        """
-        return _JSON_NAME
-
-    def encode(
-        self, values: Union[list[Any], dict[str, Any]], params: list[ParamDetail], *, encoding: str = constants.UTF_8
-    ) -> bytes:
-        """
-        Encode the given values based on parameter metadata into a JSON byte representation.
-        """
-        if not params:
-            return b""
-
-        if len(params) > 1:
-            raise ValueError("JsonEncoder supports only one parameter for encoding, but multiple were provided.")
-
-        param = params[0]
-        if isinstance(values, list):
-            if len(values) != 1:
-                raise ValueError(f"Expected a single value in list, but got {len(values)}.")
-            value = values[0]
-        else:
-            if param.name not in values:
-                raise ValueError(f"Expected parameter '{param.name}' in values, but it was not found.")
-            value = values[param.name]
-
-        try:
-            # Encode the value to a JSON-serializable format
-            jsonable_obj = encode_jsonable(value)
-            # Convert to JSON bytes
-            return json.dumps(jsonable_obj, ensure_ascii=False).encode(encoding)
-        except Exception as e:
-            raise ValueError(
-                f"Failed to encode value of type {type(value).__name__} for parameter '{param.name}': {e}"
-            ) from e
+        raise ValueError(f"Failed to decode value {raw!r} to type '{target_type}': {e}") from e
 
 
 class JsonDecoder(Decoder):
     """
-    JSON decoder for decoding structured parameters.
+    JSON decoder that parses a single parameter from JSON-encoded bytes.
+
+    This decoder only supports a single parameter and uses `decode_value`
+    to convert the parsed JSON object into the expected type.
     """
 
     @property
     def encoding(self) -> str:
         """
-        Returns the name of the serialization format used by this decoder.
+        Return the name of the decoding format.
         """
-        return _JSON_NAME
+        return constants.JSON
 
     def decode(
         self, *, data: bytes, params: list[ParamDetail], encoding: str = constants.UTF_8
     ) -> Union[list[Any], dict[str, Any]]:
         """
-        Decode bytes into positional (list) or keyword (dict) arguments based on parameter metadata.
+        Decode JSON-encoded bytes into one parameter's value.
+
+        Args:
+            data: The incoming byte stream (e.g., from network).
+            params: A list of exactly one parameter descriptor.
+            encoding: The character encoding of the bytes (default: UTF-8).
+
+        Returns:
+            A list or dict containing the decoded value, depending on the parameter kind.
+
+        Raises:
+            ValueError: If the input is invalid, not JSON, or the value cannot be decoded.
         """
         if not params:
             if data:
@@ -284,22 +338,35 @@ class JsonDecoder(Decoder):
             raise ValueError("JsonDecoder supports only one parameter for decoding, but multiple were provided.")
 
         param = params[0]
-        # Decode the JSON data
-        json_str = data.decode(encoding)
-        decoded_value = json.loads(json_str)
 
-        # Validate the decoded value and ensure it matches the parameter's type
-        excepted_value = decode_value(decoded_value, param.annotation)
+        try:
+            json_str = data.decode(encoding)
+        except UnicodeDecodeError as e:
+            raise ValueError(f"Failed to decode bytes using encoding '{encoding}': {e}") from e
 
-        # Return as a single-item list or dict based on the parameter kind
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON input: {e}") from e
+
+        try:
+            value = decode_value(parsed, param.annotation)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to decode JSON value {parsed!r} to expected type '{param.annotation}': {e}"
+            ) from e
+
+        # Return based on parameter kind
         if param.kind == ParamKind.POSITIONAL_ONLY:
-            return [excepted_value]
-        return {param.name: excepted_value}
+            return [value]
+        return {param.name: value}
 
 
 class JsonCodec(JsonEncoder, JsonDecoder, Codec):
     """
-    JSON codec that combines encoding and decoding functionality for structured parameters.
+    Combines both JsonEncoder and JsonDecoder into a unified Codec.
+
+    Implements the full Codec interface using JSON as the serialization format.
     """
 
     @property
@@ -307,29 +374,35 @@ class JsonCodec(JsonEncoder, JsonDecoder, Codec):
         """
         Returns the name of the serialization format used by this codec.
         """
-        return _JSON_NAME
+        return constants.JSON
 
 
 class JsonCodecFactory(CodecFactory, SingletonBase):
+    """
+    A singleton factory that always returns the same JsonCodec instance.
+
+    Ensures consistent reuse of a stateless JSON codec implementation.
+    """
+
     __slots__ = ("_codec",)
 
     def __init__(self) -> None:
-        self._codec = JsonCodec()
+        self._codec: JsonCodec = JsonCodec()
 
     def create_encoder(self, descriptor: MethodDescriptor) -> Encoder:
         """
-        Create a JSON encoder based on the method descriptor.
+        Returns the shared JsonCodec as the encoder.
         """
         return self._codec
 
     def create_decoder(self, descriptor: MethodDescriptor) -> Decoder:
         """
-        Create a JSON decoder based on the method descriptor.
+        Returns the shared JsonCodec as the decoder.
         """
         return self._codec
 
     def create_codec(self, descriptor: MethodDescriptor) -> Codec:
         """
-        Create a JSON codec that combines both encoding and decoding functionality.
+        Returns the shared JsonCodec instance.
         """
         return self._codec

@@ -248,8 +248,7 @@ class AnyIOH2Stream(AsyncHttp2Stream):
             logger.debug(
                 "Stream %s: acknowledging %d bytes of unacknowledged data before closing", self._id, unacked_size
             )
-            tracker = AnyIOSendTracker(lambda: self._atomic_ack_data(unacked_size), no_wait=True)
-            await self._conn.send(tracker)
+            await self.ack_data(unacked_size)
 
         if self.local_exc and self._remote_exc:
             logger.debug("Stream %s: both local and remote sides already closed", self._id)

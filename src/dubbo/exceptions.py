@@ -16,6 +16,8 @@
 import contextlib
 from collections.abc import Iterator
 
+__all__ = ["map_exceptions", "ExceptionMapping"]
+
 # ==== Exception Mapping ====
 ExceptionMapping = dict[type[Exception], type[Exception]]
 

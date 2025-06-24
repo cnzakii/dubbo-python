@@ -23,3 +23,7 @@ PROTOCOL_SEPARATOR = "://"
 CALL_TYPE = "call-type"
 
 SERIALIZATION_TYPE = "serialization-type"
+
+JSON = "json"
+PROTOBUF = "protobuf"
+PROTO = "proto"
